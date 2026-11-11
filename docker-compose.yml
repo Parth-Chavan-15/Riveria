@@ -1,0 +1,40 @@
+services:
+  riveria-backend:
+    build:
+      context: ./server
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
+    volumes:
+      - audio_uploads:/app/uploads
+    expose:
+      - "5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  riveria-frontend:
+    build:
+      context: ./client
+    ports:
+      - "8080:80"
+    depends_on:
+      riveria-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  audio_uploads:

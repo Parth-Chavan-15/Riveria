@@ -1,0 +1,8 @@
+.env
+*.env
+!.env.example
+node_modules/
+dist/
+coverage/
+server/uploads/
+atlas-credentials.env

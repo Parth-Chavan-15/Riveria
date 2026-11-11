@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0e0e0f;
+  --color-primary: #d0bcff;
+  --color-secondary: #89ceff;
+  --color-tertiary: #fbabff;
+  --color-glass-surface: rgba(255, 255, 255, 0.05);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  background-color: #0e0e0f;
+  background-image: radial-gradient(circle at 15% 50%, rgba(208, 188, 255, 0.08), transparent 25%),
+                    radial-gradient(circle at 85% 30%, rgba(137, 206, 255, 0.05), transparent 25%);
+  background-attachment: fixed;
+  color: #e5e2e3;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background-color: var(--color-glass-surface);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--color-glass-border);
+}
+.glass-panel:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { 
+  background: rgba(255, 255, 255, 0.1); 
+  border-radius: 10px; 
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(208, 188, 255, 0.3); }
+
+/* Material Symbols Setup */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}

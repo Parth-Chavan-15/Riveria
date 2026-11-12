@@ -12,38 +12,64 @@ exports.joinRoom = async (req, res, next) => {
     const normalizedRoom = roomId.trim().toLowerCase();
     const now = new Date();
 
+    // 1. Ensure room exists atomically without duplicate key race condition
     let room = await JamRoom.findOne({ roomId: normalizedRoom });
     if (!room) {
-      room = new JamRoom({
-        roomId: normalizedRoom,
-        peers: [],
-        playlist: []
-      });
+      try {
+        room = await JamRoom.create({
+          roomId: normalizedRoom,
+          peers: [],
+          playlist: []
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          room = await JamRoom.findOne({ roomId: normalizedRoom });
+        } else {
+          throw err;
+        }
+      }
     }
 
-    // Filter out timed-out peers or duplicate of current peer
-    room.peers = room.peers.filter((p) => {
-      const isSelf = p.peerId === peerId;
-      const isFresh = now - new Date(p.lastSeen) < PEER_TIMEOUT_MS;
-      return !isSelf && isFresh;
-    });
+    // 2. Atomically prune stale peers and current peer (if re-joining)
+    const cutoff = new Date(Date.now() - PEER_TIMEOUT_MS);
+    await JamRoom.updateOne(
+      { roomId: normalizedRoom },
+      {
+        $pull: {
+          peers: {
+            $or: [{ peerId }, { lastSeen: { $lt: cutoff } }]
+          }
+        }
+      }
+    );
 
-    // Add current peer
-    room.peers.push({
-      peerId,
-      email: user?.email || req.user?.email || 'Anonymous',
-      role: user?.role || req.user?.role || 'Listener',
-      lastSeen: now
-    });
-    room.updatedAt = now;
-    await room.save();
+    // 3. Atomically add current peer and update timestamp
+    const updatedRoom = await JamRoom.findOneAndUpdate(
+      { roomId: normalizedRoom },
+      {
+        $push: {
+          peers: {
+            peerId,
+            email: user?.email || req.user?.email || 'Anonymous',
+            role: user?.role || req.user?.role || 'Listener',
+            lastSeen: now
+          }
+        },
+        $set: { updatedAt: now }
+      },
+      { new: true, lean: true }
+    );
+
+    const activePeers = (updatedRoom?.peers || []).filter(
+      (p) => now - new Date(p.lastSeen) < PEER_TIMEOUT_MS
+    );
 
     res.json({
       ok: true,
       roomId: normalizedRoom,
-      peers: room.peers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
-      playlist: room.playlist,
-      currentPlayback: room.currentPlayback || null,
+      peers: activePeers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
+      playlist: updatedRoom?.playlist || [],
+      currentPlayback: updatedRoom?.currentPlayback || null,
       serverTime: Date.now()
     });
   } catch (err) {
@@ -84,14 +110,14 @@ exports.pollSignals = async (req, res, next) => {
     const normalizedRoom = roomId.trim().toLowerCase();
     const now = new Date();
 
-    // 1. Fetch pending signals for this peer
+    // 1. Fetch and consume pending signals for this peer
     const signals = await JamSignal.find({ roomId: normalizedRoom, targetId: peerId }).sort({ createdAt: 1 });
     if (signals.length > 0) {
       const signalIds = signals.map((s) => s._id);
       await JamSignal.deleteMany({ _id: { $in: signalIds } });
     }
 
-    // 2. Touch heartbeat atomically and retrieve current peers without version collision
+    // 2. Touch heartbeat atomically and retrieve current room state
     let room = await JamRoom.findOneAndUpdate(
       { roomId: normalizedRoom, 'peers.peerId': peerId },
       { $set: { 'peers.$.lastSeen': now, updatedAt: now } },
@@ -99,7 +125,7 @@ exports.pollSignals = async (req, res, next) => {
     );
 
     if (!room) {
-      // Peer not yet in room array, add peer atomically
+      // Peer not yet in array, push peer atomically
       room = await JamRoom.findOneAndUpdate(
         { roomId: normalizedRoom },
         {
@@ -113,8 +139,28 @@ exports.pollSignals = async (req, res, next) => {
           },
           $set: { updatedAt: now }
         },
-        { new: true, upsert: true, lean: true }
+        { new: true, lean: true }
       );
+
+      if (!room) {
+        // Room does not exist yet: safely create
+        try {
+          room = await JamRoom.create({
+            roomId: normalizedRoom,
+            peers: [{
+              peerId,
+              email: req.user?.email || 'Anonymous',
+              role: req.user?.role || 'Listener',
+              lastSeen: now
+            }],
+            playlist: []
+          });
+        } catch (e) {
+          if (e.code === 11000) {
+            room = await JamRoom.findOne({ roomId: normalizedRoom }).lean();
+          }
+        }
+      }
     }
 
     const activePeers = (room?.peers || []).filter(
@@ -163,7 +209,7 @@ exports.syncPlayback = async (req, res, next) => {
     const now = new Date();
     const serverTimeMs = Date.now();
 
-    // Retrieve current room state to atomically increment version
+    // Monotonically increment version for action deduplication
     const existing = await JamRoom.findOne({ roomId: normalizedRoom }).lean();
     const prevVersion = existing?.currentPlayback?.version || 0;
     const nextVersion = prevVersion + 1;
@@ -175,13 +221,17 @@ exports.syncPlayback = async (req, res, next) => {
       id: targetTrackId
     } : null;
 
+    // Single-Speaker Master-Clock Scheduling: 150ms lookahead
+    const scheduledStartTime = currentPlayback.scheduledStartTime || (serverTimeMs + 150);
+
     const playbackWithTime = {
       ...currentPlayback,
       trackId: targetTrackId,
       track: trackObj,
       version: nextVersion,
       timestamp: now,
-      serverTime: serverTimeMs
+      serverTime: serverTimeMs,
+      scheduledStartTime
     };
 
     await JamRoom.updateOne(
@@ -204,9 +254,10 @@ exports.updatePlaylist = async (req, res, next) => {
       return res.status(400).json({ ok: false, error: 'roomId and playlist array required' });
     }
     const normalizedRoom = roomId.trim().toLowerCase();
+    const now = new Date();
     await JamRoom.updateOne(
       { roomId: normalizedRoom },
-      { $set: { playlist, updatedAt: new Date() } },
+      { $set: { playlist, updatedAt: now } },
       { upsert: true }
     );
     req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playlist-sync', { playlist });

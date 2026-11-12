@@ -31,6 +31,11 @@ const JamContext = createContext(null);
 
 export function JamProvider({ children }) {
   const player = usePlayer();
+  const playerRef = useRef(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
   const { user } = useAuth();
 
   const myPeerIdRef = useRef(`peer-${crypto.randomUUID().slice(0, 8)}`);
@@ -61,6 +66,11 @@ export function JamProvider({ children }) {
   const [peersList, setPeersList] = useState([]);
   const [copied, setCopied] = useState(false);
   const [collabPlaylist, setCollabPlaylist] = useState([]);
+  const collabPlaylistRef = useRef(collabPlaylist);
+  useEffect(() => {
+    collabPlaylistRef.current = collabPlaylist;
+  }, [collabPlaylist]);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [availableCloudTracks, setAvailableCloudTracks] = useState([]);
   const [eventLogs, setEventLogs] = useState([
@@ -94,7 +104,7 @@ export function JamProvider({ children }) {
     if (payload.fromPeerId && payload.fromPeerId === myPeerIdRef.current) return;
 
     isIncomingSyncRef.current = true;
-    player.syncPlayback(payload, [...tracksRef.current, ...collabPlaylist]);
+    playerRef.current?.syncPlayback(payload, [...tracksRef.current, ...collabPlaylistRef.current]);
     setTimeout(() => {
       isIncomingSyncRef.current = false;
     }, 400);
@@ -103,7 +113,7 @@ export function JamProvider({ children }) {
       'SYNC',
       `Auto-synced with room. "${payload.track?.title || 'Track'}" Pos: ${Math.round(payload.position || 0)}s (${payload.isPlaying ? 'Playing' : 'Paused'})`
     );
-  }, [player, collabPlaylist, addLog]);
+  }, [addLog]);
 
   // Handle incoming collaborative playlist updates from a remote peer
   const handlePlaylistSync = useCallback((newPlaylist) => {
@@ -421,7 +431,7 @@ export function JamProvider({ children }) {
           setCollabPlaylist((prev) => {
             const prevIds = prev.map((p) => p.id || p._id).join(',');
             const nextIds = data.playlist.map((p) => p.id || p._id).join(',');
-            if (prevIds !== nextIds) {
+            if (prevIds !== nextIds || prev.length !== data.playlist.length) {
               return data.playlist;
             }
             return prev;
@@ -432,6 +442,7 @@ export function JamProvider({ children }) {
         if (data.currentPlayback) {
           handlePlaybackSync({
             ...data.currentPlayback,
+            roomId: curRoom,
             serverTime: data.serverTime
           });
         }
@@ -518,6 +529,7 @@ export function JamProvider({ children }) {
       joinedRoomRef.current = targetCode;
       setJoinedRoom(targetCode);
       setRoomId(targetCode);
+      playerRef.current?.resetRoomVersion?.(targetCode);
 
       // Persist across tab switches and refreshes!
       try {
@@ -589,6 +601,7 @@ export function JamProvider({ children }) {
         body: JSON.stringify({ roomId: roomToLeave, peerId: myPeerIdRef.current })
       }).catch(() => {});
 
+      playerRef.current?.resetRoomVersion?.(roomToLeave);
       peersRef.current.forEach((_, id) => closePeer(id));
       setJoinedRoom('');
       setPeersList([]);
@@ -606,6 +619,9 @@ export function JamProvider({ children }) {
       if (!activeRoom || !detail?.track) return;
 
       const targetId = detail.track._id || detail.track.id;
+      const serverTimeEst = Date.now() + (playerRef.current?.clockSkew || 0);
+      const scheduledStartTime = serverTimeEst + 150; // Single-Speaker 150ms lookahead for synchronized audio start
+
       const actionPayload = {
         type: 'PLAYBACK_SYNC',
         roomId: activeRoom,
@@ -625,6 +641,8 @@ export function JamProvider({ children }) {
         position: detail.position || 0,
         isPlaying: Boolean(detail.isPlaying),
         timestamp: Date.now(),
+        serverTime: serverTimeEst,
+        scheduledStartTime,
         fromPeerId: myPeerIdRef.current
       };
 

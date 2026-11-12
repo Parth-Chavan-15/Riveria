@@ -314,7 +314,9 @@ export default function WebRTCSession() {
                         {id.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-white truncate max-w-[140px]">peer_{id.slice(0, 8)}</p>
+                        <p className="text-xs font-semibold text-white truncate max-w-[140px] font-mono">
+                          {id.startsWith('peer-') ? `peer_${id.slice(5, 13)}` : `peer_${id.slice(0, 8)}`}
+                        </p>
                         <p className="text-[10px] text-emerald-400 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                           Direct DataChannel Active

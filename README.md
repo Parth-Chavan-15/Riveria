@@ -18,12 +18,6 @@
 
 ---
 
-> [!NOTE]
-> **rev·er·ie** `/ˈrev(ə)rē/` — *noun*  
-> *A state of being pleasantly lost in one's thoughts; a daydream.*
-
----
-
 ## ✦ The Prologue
 
 In a modern musical landscape crowded with algorithmic clamor, aggressive telemetry, commercial feeds, and ephemeral marketing trends, **Riveria** was envisioned as an unhurried harbor.

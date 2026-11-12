@@ -18,7 +18,7 @@ const TRACK_METADATA = [
     cleanFilename: 'imagine-dragons-believer.mp3',
     mimeType: 'audio/mpeg',
     imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
-    imageSrc: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80'
+    imageSrc: '/covers/believer.jpg'
   },
   {
     pattern: /thunder/i,
@@ -28,7 +28,7 @@ const TRACK_METADATA = [
     cleanFilename: 'imagine-dragons-thunder.mp3',
     mimeType: 'audio/mpeg',
     imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
-    imageSrc: 'https://images.unsplash.com/photo-1534088568595-a066f410bcda?w=500&auto=format&fit=crop&q=80'
+    imageSrc: '/covers/thunder.jpg'
   },
   {
     pattern: /sunflower/i,
@@ -38,7 +38,7 @@ const TRACK_METADATA = [
     cleanFilename: 'post-malone-sunflower.mp3',
     mimeType: 'audio/mpeg',
     imageColor: 'bg-gradient-to-br from-amber-500 via-orange-600 to-red-950',
-    imageSrc: 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=500&auto=format&fit=crop&q=80'
+    imageSrc: '/covers/sunflower.png'
   },
   {
     pattern: /birds/i,
@@ -48,7 +48,7 @@ const TRACK_METADATA = [
     cleanFilename: 'imagine-dragons-birds.mp4',
     mimeType: 'audio/mp4',
     imageColor: 'bg-gradient-to-br from-emerald-600 via-teal-700 to-zinc-950',
-    imageSrc: 'https://images.unsplash.com/photo-1522926193341-e9ffd686c60f?w=500&auto=format&fit=crop&q=80'
+    imageSrc: '/covers/birds.jpg'
   },
   {
     pattern: /happier/i,
@@ -58,7 +58,7 @@ const TRACK_METADATA = [
     cleanFilename: 'marshmello-happier.mp4',
     mimeType: 'audio/mp4',
     imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-indigo-950',
-    imageSrc: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=500&auto=format&fit=crop&q=80'
+    imageSrc: '/covers/happier.jpg'
   }
 ];
 

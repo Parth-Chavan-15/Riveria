@@ -279,7 +279,7 @@ export default function LandingPage() {
           id="prologue"
           className="relative max-w-5xl mx-auto px-6 sm:px-8 pt-20 pb-28 text-center flex flex-col items-center"
         >
-          {/* Poetic Inscription Badge */}
+          {/* Absolute Engine Status Badge */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -287,11 +287,9 @@ export default function LandingPage() {
             className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#201f20]/60 border border-white/10 backdrop-blur-xl text-xs font-mono text-[#d0bcff] mb-8"
           >
             <Sparkles className="w-3 h-3 text-[#fbabff]" />
-            <span>rev·er·ie</span>
-            <span className="text-zinc-600">—</span>
-            <span className="text-zinc-300 italic font-serif">
-              a state of being pleasantly lost in one's thoughts
-            </span>
+            <span className="tracking-widest uppercase font-semibold">Riveria Engine</span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-zinc-300">High-Fidelity Audio Sanctuary</span>
           </motion.div>
 
           {/* Monolithic Literary Headline */}

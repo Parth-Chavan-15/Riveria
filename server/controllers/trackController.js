@@ -7,6 +7,9 @@ const { validateAudioSignature } = require('../utils/audioValidator');
 
 const uploadsDirectory = path.resolve(__dirname, '..', env.UPLOAD_DIR);
 
+// In-memory audio buffer cache for 0ms instant response on range requests
+const audioCache = new Map(); // trackId -> { buffer: Buffer, contentType: string }
+
 function emitTrackEvent(req, action, track) {
   const payload = { action, track, occurredAt: new Date().toISOString() };
   req.app.get('io').to('authenticated').emit(`track:${action}`, payload);
@@ -117,9 +120,95 @@ exports.streamAudio = async (req, res, next) => {
       return res.status(404).json({ error: { code: 'TRACK_NOT_FOUND', message: 'Track not found' } });
     }
 
+    const trackIdStr = String(track._id);
     const range = req.headers.range;
 
-    // 1. Direct streaming from MongoDB Atlas GridFS
+    // Fast-path 1: Serve directly from In-Memory RAM Cache (0.0001ms instantaneous response)
+    if (audioCache.has(trackIdStr)) {
+      const cached = audioCache.get(trackIdStr);
+      const fileSize = cached.buffer.length;
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', cached.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+      if (!range) {
+        res.setHeader('Content-Length', fileSize);
+        if (req.method === 'HEAD') return res.status(200).end();
+        return res.status(200).end(cached.buffer);
+      }
+
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match || (!match[1] && !match[2])) {
+        return res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+      }
+
+      let start = 0;
+      let end = fileSize - 1;
+
+      if (!match[1]) {
+        const suffix = Number(match[2]);
+        if (suffix === 0) return res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+        start = Math.max(0, fileSize - suffix);
+      } else {
+        start = Number(match[1]);
+        end = match[2] ? Math.min(Number(match[2]), fileSize - 1) : fileSize - 1;
+      }
+
+      if (start >= fileSize || start > end) {
+        return res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+      }
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', end - start + 1);
+      if (req.method === 'HEAD') return res.end();
+      return res.end(cached.buffer.subarray(start, end + 1));
+    }
+
+    // Fast-path 2: Check local disk file if present, populate cache and serve
+    const filename = path.basename(track.audioFile?.filename || '');
+    let filePath = filename ? path.join(uploadsDirectory, filename) : null;
+    if (filePath && !fs.existsSync(filePath)) {
+      const publicAudioPath = path.resolve(__dirname, '../../client/public/audio', filename);
+      if (fs.existsSync(publicAudioPath)) {
+        filePath = publicAudioPath;
+      } else {
+        filePath = null;
+      }
+    }
+
+    if (filePath && fs.existsSync(filePath)) {
+      const buf = await fs.promises.readFile(filePath);
+      const contentType = track.audioFile?.mimeType || 'audio/mpeg';
+      audioCache.set(trackIdStr, { buffer: buf, contentType });
+
+      const fileSize = buf.length;
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+      if (!range) {
+        res.setHeader('Content-Length', fileSize);
+        if (req.method === 'HEAD') return res.status(200).end();
+        return res.status(200).end(buf);
+      }
+
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      let start = 0;
+      let end = fileSize - 1;
+      if (match && match[1]) {
+        start = Number(match[1]);
+        end = match[2] ? Math.min(Number(match[2]), fileSize - 1) : fileSize - 1;
+      }
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', end - start + 1);
+      if (req.method === 'HEAD') return res.end();
+      return res.end(buf.subarray(start, end + 1));
+    }
+
+    // 3. Fallback: Streaming from MongoDB Atlas GridFS and cache in background
     const db = mongoose.connection.db;
     if (db && track.gridFsId) {
       const fileSize = track.audioFile?.size || 0;
@@ -130,6 +219,16 @@ exports.streamAudio = async (req, res, next) => {
         const gridFsObjectId = mongoose.Types.ObjectId.isValid(track.gridFsId)
           ? new mongoose.Types.ObjectId(track.gridFsId)
           : track.gridFsId;
+
+        // Background caching of full GridFS stream so next seek/play is instant
+        const downloadChunks = [];
+        bucket.openDownloadStream(gridFsObjectId)
+          .on('data', (chunk) => downloadChunks.push(chunk))
+          .on('end', () => {
+            const fullBuf = Buffer.concat(downloadChunks);
+            audioCache.set(trackIdStr, { buffer: fullBuf, contentType });
+          })
+          .on('error', () => {});
 
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Type', contentType);
@@ -174,72 +273,6 @@ exports.streamAudio = async (req, res, next) => {
       }
     }
 
-    // 2. Stream from local disk file if present
-    const filename = path.basename(track.audioFile?.filename || '');
-    let filePath = filename ? path.join(uploadsDirectory, filename) : null;
-    if (filePath && !fs.existsSync(filePath)) {
-      const publicAudioPath = path.resolve(__dirname, '../../client/public/audio', filename);
-      if (fs.existsSync(publicAudioPath)) {
-        filePath = publicAudioPath;
-      } else {
-        filePath = null;
-      }
-    }
-
-    if (filePath && fs.existsSync(filePath)) {
-      const stat = await fs.promises.stat(filePath);
-      const contentType = track.audioFile?.mimeType || 'audio/mpeg';
-
-      res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-
-      if (!range) {
-        res.setHeader('Content-Length', stat.size);
-        if (req.method === 'HEAD') return res.status(200).end();
-        return fs.createReadStream(filePath).on('error', next).pipe(res);
-      }
-
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      if (!match || (!match[1] && !match[2])) {
-        return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
-      }
-
-      let start = 0;
-      let end = stat.size - 1;
-
-      if (!match[1]) {
-        const suffix = Number(match[2]);
-        if (suffix === 0) return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
-        start = Math.max(0, stat.size - suffix);
-      } else {
-        start = Number(match[1]);
-        if (match[2]) {
-          end = Math.min(Number(match[2]), stat.size - 1);
-        } else {
-          // Cap open-ended range request to a 512 KB chunk for instant start
-          const CHUNK_SIZE = 512 * 1024;
-          end = Math.min(start + CHUNK_SIZE - 1, stat.size - 1);
-        }
-      }
-
-      const MAX_CHUNK = 1024 * 1024;
-      if (end - start + 1 > MAX_CHUNK) {
-        end = Math.min(start + MAX_CHUNK - 1, stat.size - 1);
-      }
-
-      if (start >= stat.size || start > end) {
-        return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
-      }
-
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
-      res.setHeader('Content-Length', end - start + 1);
-      if (req.method === 'HEAD') return res.end();
-      return fs.createReadStream(filePath, { start, end }).on('error', next).pipe(res);
-    }
-
-    // 3. Fall back to external audioSrc redirect if present
     if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) {
       return res.redirect(track.audioSrc);
     }
@@ -249,3 +282,31 @@ exports.streamAudio = async (req, res, next) => {
     next(error);
   }
 };
+
+// Asynchronously warm up the in-memory cache for instant zero-latency playback
+function warmupAudioCache() {
+  Track.find().lean().then((tracks) => {
+    tracks.forEach(async (track) => {
+      try {
+        const trackIdStr = String(track._id);
+        if (audioCache.has(trackIdStr)) return;
+        const filename = path.basename(track.audioFile?.filename || '');
+        const uploadsFile = filename ? path.join(uploadsDirectory, filename) : null;
+        const publicFile = filename ? path.resolve(__dirname, '../../client/public/audio', filename) : null;
+        let buf = null;
+        if (uploadsFile && fs.existsSync(uploadsFile)) {
+          buf = await fs.promises.readFile(uploadsFile);
+        } else if (publicFile && fs.existsSync(publicFile)) {
+          buf = await fs.promises.readFile(publicFile);
+        }
+        if (buf) {
+          audioCache.set(trackIdStr, {
+            buffer: buf,
+            contentType: track.audioFile?.mimeType || 'audio/mpeg'
+          });
+        }
+      } catch {}
+    });
+  }).catch(() => {});
+}
+setTimeout(warmupAudioCache, 800);

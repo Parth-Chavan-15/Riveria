@@ -27,6 +27,22 @@ const jamRoomSchema = new mongoose.Schema({
       addedBy: String
     }
   ],
+  currentPlayback: {
+    track: {
+      _id: String,
+      title: String,
+      artist: String,
+      duration: String,
+      type: String,
+      audioSrc: String,
+      imageSrc: String,
+      imageColor: String
+    },
+    isPlaying: { type: Boolean, default: false },
+    position: { type: Number, default: 0 },
+    timestamp: { type: Date, default: Date.now },
+    fromPeerId: String
+  },
   updatedAt: {
     type: Date,
     default: Date.now,

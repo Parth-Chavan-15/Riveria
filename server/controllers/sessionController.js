@@ -42,7 +42,8 @@ exports.joinRoom = async (req, res, next) => {
       ok: true,
       roomId: normalizedRoom,
       peers: room.peers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
-      playlist: room.playlist
+      playlist: room.playlist,
+      currentPlayback: room.currentPlayback || null
     });
   } catch (err) {
     next(err);
@@ -51,7 +52,8 @@ exports.joinRoom = async (req, res, next) => {
 
 exports.sendSignal = async (req, res, next) => {
   try {
-    const { roomId, fromId, targetId, signal } = req.body;
+    let { roomId, fromId, targetId, signal } = req.body || {};
+    if (!roomId && req.headers['x-room-id']) roomId = req.headers['x-room-id'];
     if (!roomId || !fromId || !targetId || !signal) {
       return res.status(400).json({ ok: false, error: 'Missing required signaling fields' });
     }
@@ -65,6 +67,28 @@ exports.sendSignal = async (req, res, next) => {
       createdAt: new Date()
     });
 
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.syncPlayback = async (req, res, next) => {
+  try {
+    const { roomId, currentPlayback } = req.body;
+    if (!roomId || !currentPlayback) {
+      return res.status(400).json({ ok: false, error: 'roomId and currentPlayback are required' });
+    }
+    const normalizedRoom = roomId.trim().toLowerCase();
+    const playbackWithTime = {
+      ...currentPlayback,
+      timestamp: new Date()
+    };
+    await JamRoom.updateOne(
+      { roomId: normalizedRoom },
+      { $set: { currentPlayback: playbackWithTime, updatedAt: new Date() } }
+    );
+    req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playback-sync', playbackWithTime);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -88,47 +112,44 @@ exports.pollSignals = async (req, res, next) => {
       await JamSignal.deleteMany({ _id: { $in: signalIds } });
     }
 
-    // 2. Touch heartbeat and clean up expired peers in the room
-    const room = await JamRoom.findOne({ roomId: normalizedRoom });
-    let peers = [];
-    let playlist = [];
+    // 2. Touch heartbeat atomically and retrieve current peers without version collision
+    let room = await JamRoom.findOneAndUpdate(
+      { roomId: normalizedRoom, 'peers.peerId': peerId },
+      { $set: { 'peers.$.lastSeen': now, updatedAt: now } },
+      { new: true, lean: true }
+    );
 
-    if (room) {
-      let peerFound = false;
-      const activePeers = [];
-
-      for (const p of room.peers) {
-        if (p.peerId === peerId) {
-          p.lastSeen = now;
-          peerFound = true;
-          activePeers.push(p);
-        } else if (now - new Date(p.lastSeen) < PEER_TIMEOUT_MS) {
-          activePeers.push(p);
-        }
-      }
-
-      if (!peerFound) {
-        activePeers.push({
-          peerId,
-          email: req.user?.email || 'Anonymous',
-          role: req.user?.role || 'Listener',
-          lastSeen: now
-        });
-      }
-
-      room.peers = activePeers;
-      room.updatedAt = now;
-      await room.save();
-
-      peers = room.peers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role }));
-      playlist = room.playlist || [];
+    if (!room) {
+      // Peer not yet in room array, add peer atomically
+      room = await JamRoom.findOneAndUpdate(
+        { roomId: normalizedRoom },
+        {
+          $push: {
+            peers: {
+              peerId,
+              email: req.user?.email || 'Anonymous',
+              role: req.user?.role || 'Listener',
+              lastSeen: now
+            }
+          },
+          $set: { updatedAt: now }
+        },
+        { new: true, upsert: true, lean: true }
+      );
     }
+
+    const activePeers = (room?.peers || []).filter(
+      (p) => now - new Date(p.lastSeen) < PEER_TIMEOUT_MS
+    );
+    const peers = activePeers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role }));
+    const playlist = room?.playlist || [];
 
     res.json({
       ok: true,
       signals: signals.map((s) => ({ fromId: s.fromId, signal: s.signal })),
       peers,
-      playlist
+      playlist,
+      currentPlayback: room?.currentPlayback || null
     });
   } catch (err) {
     next(err);
@@ -146,6 +167,28 @@ exports.leaveRoom = async (req, res, next) => {
       );
       await JamSignal.deleteMany({ roomId: normalizedRoom, $or: [{ fromId: peerId }, { targetId: peerId }] });
     }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.syncPlayback = async (req, res, next) => {
+  try {
+    const { roomId, currentPlayback } = req.body;
+    if (!roomId || !currentPlayback) {
+      return res.status(400).json({ ok: false, error: 'roomId and currentPlayback are required' });
+    }
+    const normalizedRoom = roomId.trim().toLowerCase();
+    const playbackWithTime = {
+      ...currentPlayback,
+      timestamp: new Date()
+    };
+    await JamRoom.updateOne(
+      { roomId: normalizedRoom },
+      { $set: { currentPlayback: playbackWithTime, updatedAt: new Date() } }
+    );
+    req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playback-sync', playbackWithTime);
     res.json({ ok: true });
   } catch (err) {
     next(err);

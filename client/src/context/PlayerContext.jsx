@@ -45,7 +45,6 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     const audio = audioRef.current;
     audio.preload = 'auto';
-    audio.volume = isMuted ? 0 : volume / 100;
     audioCoordinator.register(audio);
 
     const onTime = () => setPosition(audio.currentTime || 0);
@@ -80,7 +79,6 @@ export function PlayerProvider({ children }) {
 
     return () => {
       audioCoordinator.unregister(audio);
-      audio.pause();
       window.removeEventListener('reveria:all-audio-stopped', handleStopAll);
       window.removeEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
       audio.removeEventListener('timeupdate', onTime);
@@ -90,6 +88,13 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('error', onError);
       localTracksRef.current.forEach((track) => track.localUrl && URL.revokeObjectURL(track.localUrl));
     };
+  }, []);
+
+  // Isolate volume & mute updates so volume changes NEVER pause or reload audio!
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : volume / 100;
+    }
   }, [isMuted, volume]);
 
   const setVolume = useCallback((val) => {
@@ -301,16 +306,31 @@ export function PlayerProvider({ children }) {
     }
   }, [currentTrack]);
 
-  const syncPlayback = useCallback(async ({ trackId, position: remotePosition, isPlaying: remoteIsPlaying }, tracks = []) => {
+  const syncPlayback = useCallback(async (payload, tracks = []) => {
+    if (!payload) return;
+    const { trackId, position: remotePosition, isPlaying: remoteIsPlaying, track: directTrack, timestamp } = payload;
     const allTracks = [...tracks, ...localTracksRef.current];
-    const track = allTracks.find((item) => item._id === trackId);
+    const track = allTracks.find((item) => item._id === trackId) || directTrack;
     if (!track) return;
-    await playTrack(track, allTracks);
-    seek(remotePosition);
-    if (!remoteIsPlaying) {
-      audioRef.current.pause();
+
+    const latencyOffset = timestamp ? Math.max(0, (Date.now() - new Date(timestamp).getTime()) / 1000) : 0;
+    const targetPos = Math.max(0, (remotePosition || 0) + (remoteIsPlaying ? latencyOffset : 0));
+
+    const audio = audioRef.current;
+    if (currentTrack?._id !== track._id) {
+      await playTrack(track, allTracks);
     }
-  }, [playTrack, seek]);
+
+    if (Math.abs(audio.currentTime - targetPos) > 0.25) {
+      seek(targetPos);
+    }
+
+    if (remoteIsPlaying && audio.paused) {
+      audio.play().catch(() => {});
+    } else if (!remoteIsPlaying && !audio.paused) {
+      audio.pause();
+    }
+  }, [currentTrack, playTrack, seek]);
 
   const value = useMemo(() => ({
     currentTrack,

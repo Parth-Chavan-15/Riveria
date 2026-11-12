@@ -322,21 +322,18 @@ export default function LandingPage() {
       audioCoordinator.register(heroAudio);
     }
 
-    // B. Priority 2: Stagger remaining tracks so Track 0 receives 100% network bandwidth
-    const preloadTimer = setTimeout(() => {
-      STATIC_MOVEMENT_TRACKS.slice(1).forEach((track) => {
-        const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
-        if (!audioPoolRef.current.has(track._id)) {
-          const audioElem = new Audio();
-          audioElem.preload = 'auto';
-          audioElem.src = streamUrl;
-          audioElem.volume = volume / 100;
-          audioElem.load();
-          audioPoolRef.current.set(track._id, audioElem);
-          audioCoordinator.register(audioElem);
-        }
-      });
-    }, 1000);
+    // B. Setup background tracks without aggressive preloading so Track 0 receives 100% network bandwidth
+    STATIC_MOVEMENT_TRACKS.slice(1).forEach((track) => {
+      const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
+      if (!audioPoolRef.current.has(track._id)) {
+        const audioElem = new Audio();
+        audioElem.preload = 'none';
+        audioElem.src = streamUrl;
+        audioElem.volume = volume / 100;
+        audioPoolRef.current.set(track._id, audioElem);
+        audioCoordinator.register(audioElem);
+      }
+    });
 
     // C. Background metadata sync from MongoDB Atlas
     let active = true;
@@ -356,7 +353,6 @@ export default function LandingPage() {
 
     return () => {
       active = false;
-      clearTimeout(preloadTimer);
       stopAllLandingAudio();
     };
   }, [volume, stopAllLandingAudio]);

@@ -11,10 +11,11 @@ const generateToken = (id) => {
 exports.register = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const userExists = await User.findOne({ email });
+        const normalizedEmail = (email || '').trim().toLowerCase();
+        const userExists = await User.findOne({ email: normalizedEmail });
         if (userExists) return res.status(400).json({ error: 'User already exists' });
 
-        const user = await User.create({ email, password, role: 'user' });
+        const user = await User.create({ email: normalizedEmail, password, role: 'user' });
         res.status(201).json({ _id: user._id, email: user.email, role: user.role, token: generateToken(user._id) });
     } catch (error) {
         res.status(500).json({ error: 'Server error during registration' });
@@ -25,7 +26,8 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ email }).select('+password');
+        const normalizedEmail = (email || '').trim().toLowerCase();
+        const user = await User.findOne({ email: normalizedEmail }).select('+password');
 
         if (user && (await user.matchPassword(password))) {
             res.status(200).json({ _id: user._id, email: user.email, role: user.role, token: generateToken(user._id) });

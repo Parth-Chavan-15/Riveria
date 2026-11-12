@@ -18,6 +18,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!token) return;
+    if (user) return; // Skip redundant roundtrip when user is already populated from login
     let active = true;
     apiRequest('/auth/me')
       .then((profile) => active && setUser(profile))
@@ -26,7 +27,7 @@ export function AuthProvider({ children }) {
       })
       .finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [token, logout]);
+  }, [token, user, logout]);
 
   const authenticate = useCallback(async (endpoint, email, password) => {
     setError('');

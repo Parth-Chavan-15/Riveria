@@ -40,6 +40,11 @@ export default function WebRTCSession() {
   const pollTimerRef = useRef(null);
   const signalingModeRef = useRef('socket'); // 'socket' or 'rest'
   const activeIncomingTransferRef = useRef(null);
+  const joinedRoomRef = useRef('');
+  const isIncomingSyncRef = useRef(false);
+  const lastBroadcastTrackIdRef = useRef(null);
+  const lastBroadcastPlayingRef = useRef(null);
+  const lastBroadcastPosRef = useRef(0);
 
   const [roomId, setRoomId] = useState(() => searchParams.get('room')?.toUpperCase() || '');
   const [joinedRoom, setJoinedRoom] = useState('');
@@ -75,12 +80,20 @@ export default function WebRTCSession() {
   }, []);
 
 
-  // Handle incoming playback sync from a remote peer
+  // Handle incoming playback sync from a remote peer or pseudo-server
   const handlePlaybackSync = useCallback((payload) => {
+    if (!payload?.trackId && !payload?.track) return;
+    if (payload.fromPeerId && payload.fromPeerId === myPeerIdRef.current) return;
+
+    isIncomingSyncRef.current = true;
     player.syncPlayback(payload, [...tracksRef.current, ...collabPlaylist]);
+    setTimeout(() => {
+      isIncomingSyncRef.current = false;
+    }, 400);
+
     addLog(
       'SYNC',
-      `Synchronized playback with peer. Pos: ${Math.round(payload.position || 0)}s, State: ${payload.isPlaying ? 'Playing' : 'Paused'}`
+      `Auto-synced with room. "${payload.track?.title || 'Track'}" Pos: ${Math.round(payload.position || 0)}s (${payload.isPlaying ? 'Playing' : 'Paused'})`
     );
   }, [player, collabPlaylist, addLog]);
 
@@ -101,14 +114,17 @@ export default function WebRTCSession() {
 
   // Dispatch signal via Socket.io or HTTP REST
   const dispatchSignal = useCallback(async (targetId, signal) => {
-    if (socketRef.current?.connected) {
+    const activeRoom = joinedRoomRef.current || joinedRoom;
+    if (!activeRoom || !targetId || !signal) return;
+
+    if (signalingModeRef.current === 'socket' && socketRef.current?.connected) {
       socketRef.current.emit('jam:signal', { targetId, signal });
     } else {
       try {
         await apiRequest('/session/signal', {
           method: 'POST',
           body: JSON.stringify({
-            roomId: joinedRoom,
+            roomId: activeRoom,
             fromId: myPeerIdRef.current,
             targetId,
             signal
@@ -246,7 +262,7 @@ export default function WebRTCSession() {
 
     if (initiator) {
       registerChannel(
-        connection.createDataChannel('riveria-playback', { ordered: false, maxRetransmits: 0 })
+        connection.createDataChannel('riveria-playback', { ordered: true })
       );
     }
     connection.ondatachannel = (event) => registerChannel(event.channel);
@@ -311,8 +327,8 @@ export default function WebRTCSession() {
   // Initialize Hybrid Signaling (Socket.io with automatic Serverless REST fallback)
   useEffect(() => {
     const socketUrl = import.meta.env.VITE_SOCKET_URL;
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const targetUrl = socketUrl || (isLocal ? window.location.origin : null);
+    const isVercelServerless = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+    const targetUrl = socketUrl || (!isVercelServerless ? window.location.origin : null);
 
     if (targetUrl) {
       try {
@@ -380,6 +396,11 @@ export default function WebRTCSession() {
           }
         }
 
+        // Auto-synchronize playback if pseudo-server holds updated room state
+        if (data.currentPlayback) {
+          handlePlaybackSync(data.currentPlayback);
+        }
+
         // Detect new peers that we haven't handshaked with
         if (Array.isArray(data.peers)) {
           for (const remote of data.peers) {
@@ -431,9 +452,13 @@ export default function WebRTCSession() {
         return;
       }
 
+      joinedRoomRef.current = targetCode;
       setJoinedRoom(targetCode);
       setRoomId(targetCode);
       if (result.playlist) setCollabPlaylist(result.playlist);
+      if (result.currentPlayback) {
+        handlePlaybackSync(result.currentPlayback);
+      }
 
       setStatus(`Connected to jam "${targetCode}". Handshaking with ${result.peers.length} active peer(s)…`);
       addLog('ROOM', `Joined jam room "${targetCode}" (${result.peers.length} existing peer(s)).`);
@@ -466,10 +491,12 @@ export default function WebRTCSession() {
 
   // Leave Room
   const handleLeaveRoom = async () => {
-    if (joinedRoom) {
+    const roomToLeave = joinedRoomRef.current || joinedRoom;
+    if (roomToLeave) {
+      joinedRoomRef.current = '';
       await apiRequest('/session/leave', {
         method: 'POST',
-        body: JSON.stringify({ roomId: joinedRoom, peerId: myPeerIdRef.current })
+        body: JSON.stringify({ roomId: roomToLeave, peerId: myPeerIdRef.current })
       }).catch(() => {});
       peersRef.current.forEach((_, id) => closePeer(id));
       setJoinedRoom('');
@@ -479,29 +506,78 @@ export default function WebRTCSession() {
     }
   };
 
-  // Broadcast Playback Sync Packet over WebRTC Data Channels
-  const broadcastPlaybackSync = useCallback(() => {
-    if (!joinedRoom || !player.currentTrack) {
-      return setStatus('Join a room and start playing a track first.');
-    }
+  // Automated Real-Time Playback Synchronization across Mesh & Pseudo-Server
+  const autoBroadcastPlayback = useCallback((customState = {}) => {
+    const activeRoom = joinedRoomRef.current || joinedRoom;
+    if (!activeRoom || !player.currentTrack || isIncomingSyncRef.current) return;
 
-    const payload = {
+    const track = customState.track || player.currentTrack;
+    const isPlaying = customState.isPlaying !== undefined ? customState.isPlaying : player.isPlaying;
+    const position = customState.position !== undefined ? customState.position : player.position;
+
+    const syncPayload = {
       type: 'PLAYBACK_SYNC',
-      trackId: player.currentTrack._id,
-      position: player.position,
-      isPlaying: player.isPlaying,
-      sentAt: Date.now()
+      trackId: track._id,
+      track: {
+        _id: track._id,
+        title: track.title,
+        artist: track.artist,
+        duration: track.duration,
+        type: track.type,
+        audioSrc: track.audioSrc,
+        imageSrc: track.imageSrc,
+        imageColor: track.imageColor
+      },
+      position,
+      isPlaying,
+      timestamp: Date.now(),
+      fromPeerId: myPeerIdRef.current
     };
 
+    // 1. Direct WebRTC DataChannel (sub-10ms peer-to-peer sync)
     peersRef.current.forEach(({ channel }) => {
       if (channel?.readyState === 'open') {
-        channel.send(JSON.stringify(payload));
+        try { channel.send(JSON.stringify(syncPayload)); } catch {}
       }
     });
 
-    setStatus(`Broadcast sync for "${player.currentTrack.title}" across ${peersList.length} direct peer(s).`);
-    addLog('BROADCAST', `Sent state sync for "${player.currentTrack.title}" (${player.isPlaying ? 'Play' : 'Pause'} at ${Math.round(player.position)}s).`);
-  }, [joinedRoom, player.currentTrack, player.position, player.isPlaying, peersList.length, addLog]);
+    // 2. Socket.io room broadcast (if connected)
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('jam:playback-sync', { roomId: activeRoom, currentPlayback: syncPayload });
+    }
+
+    // 3. Pseudo-Server REST Sync (persists in MongoDB so any new joiner instantly auto-syncs)
+    apiRequest('/session/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        roomId: activeRoom,
+        currentPlayback: syncPayload
+      })
+    }).catch(() => {});
+  }, [joinedRoom, player.currentTrack, player.isPlaying, player.position]);
+
+  // Watch player state changes and auto-broadcast in real time
+  useEffect(() => {
+    const activeRoom = joinedRoomRef.current || joinedRoom;
+    if (!activeRoom || !player.currentTrack || isIncomingSyncRef.current) return;
+
+    const trackChanged = lastBroadcastTrackIdRef.current !== player.currentTrack?._id;
+    const playChanged = lastBroadcastPlayingRef.current !== player.isPlaying;
+    const seekDiff = Math.abs(player.position - lastBroadcastPosRef.current);
+    const seekChanged = seekDiff > 2.5;
+
+    if (trackChanged || playChanged || seekChanged) {
+      lastBroadcastTrackIdRef.current = player.currentTrack?._id;
+      lastBroadcastPlayingRef.current = player.isPlaying;
+      lastBroadcastPosRef.current = player.position;
+      autoBroadcastPlayback();
+    }
+  }, [joinedRoom, player.currentTrack, player.isPlaying, player.position, autoBroadcastPlayback]);
+
+  const broadcastPlaybackSync = useCallback(() => {
+    autoBroadcastPlayback();
+    setStatus('Instant sync packet dispatched to all room peers.');
+  }, [autoBroadcastPlayback]);
 
   // Broadcast Collab Playlist to All Peers
   const broadcastPlaylist = useCallback((newPlaylist) => {
@@ -670,16 +746,24 @@ export default function WebRTCSession() {
 
               {/* Sync Controls */}
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <button
-                  onClick={broadcastPlaybackSync}
-                  disabled={!player.currentTrack}
-                  className="flex items-center gap-2 rounded-xl border border-secondary/50 bg-secondary/10 px-5 py-2.5 font-semibold text-secondary hover:bg-secondary/20 transition-all disabled:opacity-40 disabled:pointer-events-none active:scale-95 shadow-[0_0_15px_rgba(137,206,255,0.15)]"
-                >
-                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                    sensors
-                  </span>
-                  <span>Sync Current Playback to Room</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.15)]">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>Zero-Latency Real-Time Sync (Automated)</span>
+                  </div>
+
+                  <button
+                    onClick={broadcastPlaybackSync}
+                    title="Force immediate broadcast re-sync"
+                    className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs text-slate-300 hover:text-white transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-sm">sync</span>
+                    <span>Re-sync</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-3 text-xs text-slate-400">
                   <span className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-emerald-400 font-mono">

@@ -11,7 +11,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   ];
 
   const bottomLinks = [
-    { to: '/landing', label: 'Engine Overview', icon: 'auto_awesome' },
     { to: '/settings', label: 'Settings', icon: 'settings' },
   ];
 

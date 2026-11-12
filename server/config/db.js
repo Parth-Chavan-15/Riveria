@@ -1,24 +1,36 @@
 const mongoose = require('mongoose');
 
-let cachedConnection = null;
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
 
 const connectDB = async () => {
-    if (mongoose.connection.readyState === 1) return mongoose.connection;
-    if (cachedConnection) return cachedConnection;
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
+  }
 
-    try {
-        cachedConnection = await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10_000,
-            maxPoolSize: 20,
-            minPoolSize: 1
-        });
-        console.log(`MongoDB Connected: ${cachedConnection.connection.host}`);
-        return cachedConnection;
-    } catch (error) {
-        cachedConnection = null;
-        console.error(`Error connecting to MongoDB: ${error.message}`);
-        throw error;
-    }
+  if (!cached.promise) {
+    const opts = {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+      maxPoolSize: 10,
+      minPoolSize: 1
+    };
+    cached.promise = mongoose.connect(process.env.MONGODB_URI, opts).then((m) => {
+      console.log(`MongoDB Connected: ${m.connection.host}`);
+      return m;
+    });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+    return cached.conn;
+  } catch (error) {
+    cached.promise = null;
+    console.error(`Error connecting to MongoDB: ${error.message}`);
+    throw error;
+  }
 };
 
 mongoose.connection.on('disconnected', () => console.warn('MongoDB disconnected'));

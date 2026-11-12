@@ -27,8 +27,8 @@ export default function TopBar({ onToggleMobileMenu = () => {} }) {
 
   useEffect(() => {
     const socketUrl = import.meta.env.VITE_SOCKET_URL;
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const targetUrl = socketUrl || (isLocal ? window.location.origin : null);
+    const isVercelServerless = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+    const targetUrl = socketUrl || (!isVercelServerless ? window.location.origin : null);
     if (!targetUrl) return;
 
     try {

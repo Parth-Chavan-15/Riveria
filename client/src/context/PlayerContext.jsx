@@ -114,9 +114,30 @@ export function PlayerProvider({ children }) {
       }
     };
 
+    let stallWatchdog = null;
+    const onWaitingOrStalled = () => {
+      if (isPlayingRef.current) {
+        if (stallWatchdog) clearTimeout(stallWatchdog);
+        stallWatchdog = setTimeout(() => {
+          if (audioRef.current && currentTrackRef.current && isPlayingRef.current) {
+            const resumePos = audioRef.current.currentTime || 0;
+            audioRef.current.src = sourceFor(currentTrackRef.current);
+            audioRef.current.load();
+            audioRef.current.currentTime = resumePos;
+            audioRef.current.play().then(() => {
+              setIsAutoplayBlocked(false);
+            }).catch(() => {});
+          }
+        }, 2000);
+      }
+    };
+    const onClearWatchdog = () => {
+      if (stallWatchdog) clearTimeout(stallWatchdog);
+    };
+
     const handleOnline = () => {
       setError('');
-      if (audioRef.current && currentTrackRef.current && audioRef.current.paused && isPlayingRef.current) {
+      if (audioRef.current && currentTrackRef.current && isPlayingRef.current) {
         const resumePos = audioRef.current.currentTime || 0;
         audioRef.current.src = sourceFor(currentTrackRef.current);
         audioRef.current.load();
@@ -160,11 +181,15 @@ export function PlayerProvider({ children }) {
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
+    audio.addEventListener('playing', onClearWatchdog);
+    audio.addEventListener('waiting', onWaitingOrStalled);
+    audio.addEventListener('stalled', onWaitingOrStalled);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('error', onError);
 
     return () => {
       audioCoordinator.unregister(audio);
+      if (stallWatchdog) clearTimeout(stallWatchdog);
       window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('click', unlockAudio);
       window.removeEventListener('reveria:all-audio-stopped', handleStopAll);
@@ -173,6 +198,9 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('playing', onClearWatchdog);
+      audio.removeEventListener('waiting', onWaitingOrStalled);
+      audio.removeEventListener('stalled', onWaitingOrStalled);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('error', onError);
       localTracksRef.current.forEach((track) => track.localUrl && URL.revokeObjectURL(track.localUrl));
@@ -523,17 +551,30 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     const isTargetPlaying = Boolean(remoteIsPlaying);
     const nowServerEst = clientNow + clockSkewRef.current;
-
-    // 2. Compute target position with clock-skew corrected elapsed offset from recorded moment
-    let targetPos = Math.max(0, Number(remotePosition) || 0);
-    if (isTargetPlaying) {
-      const originTime = recordedServerTime || (timestamp ? new Date(timestamp).getTime() : nowServerEst);
-      const elapsed = Math.max(0, Math.min(3600, (nowServerEst - originTime) / 1000));
-      targetPos += elapsed;
-    }
-
     const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
     const isDifferentTrack = currentId !== targetId;
+    const isExplicitTrackChange = action === 'track_change' || isDifferentTrack;
+    const isExplicitSeek = action === 'seek';
+
+    // 2. Compute target position: track changes always start at 0s, seeks jump directly
+    let targetPos = Math.max(0, Number(remotePosition) || 0);
+    if (isExplicitTrackChange) {
+      targetPos = 0;
+    } else if (isExplicitSeek) {
+      targetPos = Math.max(0, Number(remotePosition) || 0);
+    } else if (isTargetPlaying) {
+      // Catch-up for continuing streams: use server-measured elapsed delta if available
+      if (currentServerTime && recordedServerTime && currentServerTime >= recordedServerTime) {
+        const srvElapsed = (currentServerTime - recordedServerTime) / 1000;
+        targetPos += Math.max(0, Math.min(3600, srvElapsed));
+      } else {
+        const originTime = recordedServerTime || (timestamp ? new Date(timestamp).getTime() : nowServerEst);
+        const rawElapsed = (nowServerEst - originTime) / 1000;
+        if (rawElapsed > 0 && rawElapsed < 6) {
+          targetPos += rawElapsed;
+        }
+      }
+    }
 
     // A. Track is different -> ALWAYS load and synchronize the room's track immediately!
     if (isDifferentTrack) {

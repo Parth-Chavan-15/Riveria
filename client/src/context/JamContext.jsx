@@ -134,7 +134,12 @@ export function JamProvider({ children }) {
     } else if (payload.version) {
       // Server REST Poll state
       const srvVer = Number(payload.version) || 0;
-      if (srvVer && lastServerVersionRef.current && srvVer <= lastServerVersionRef.current) {
+      const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
+      const incomingTrackId = payload.trackId || payload.track?._id || payload.track?.id;
+      const isDiff = Boolean(incomingTrackId && currentTrackId !== incomingTrackId);
+
+      // If track is different, NEVER reject!
+      if (!isDiff && srvVer && lastServerVersionRef.current && srvVer <= lastServerVersionRef.current) {
         return; // Already processed this or newer server state
       }
       if (srvVer > lastServerVersionRef.current) {
@@ -348,7 +353,19 @@ export function JamProvider({ children }) {
           if (connection.connectionState === 'disconnected') {
             closePeer(peerId);
           }
-        }, 5000);
+        }, 4000);
+      }
+    };
+
+    connection.oniceconnectionstatechange = () => {
+      if (['failed', 'closed'].includes(connection.iceConnectionState)) {
+        closePeer(peerId);
+      } else if (connection.iceConnectionState === 'disconnected') {
+        setTimeout(() => {
+          if (connection.iceConnectionState === 'disconnected') {
+            closePeer(peerId);
+          }
+        }, 3000);
       }
     };
 
@@ -359,9 +376,16 @@ export function JamProvider({ children }) {
 
   // Handle incoming WebRTC signal (offer/answer/candidate)
   const processSignal = useCallback(async (fromId, signal) => {
-    const peer = createPeer(fromId, false);
     try {
       if (signal.type === 'offer') {
+        let peer = peersRef.current.get(fromId);
+        if (peer && ['closed', 'failed'].includes(peer.connection?.connectionState)) {
+          closePeer(fromId);
+          peer = null;
+        }
+        if (!peer) {
+          peer = createPeer(fromId, false);
+        }
         await peer.connection.setRemoteDescription({ type: 'offer', sdp: signal.sdp });
         while (peer.pendingCandidates?.length) {
           const candidate = peer.pendingCandidates.shift();
@@ -372,6 +396,7 @@ export function JamProvider({ children }) {
         dispatchSignal(fromId, { type: 'answer', sdp: answer.sdp });
         addLog('SDP', `Answered offer from peer ${fromId.slice(0, 8)}.`);
       } else if (signal.type === 'answer') {
+        const peer = createPeer(fromId, false);
         await peer.connection.setRemoteDescription({ type: 'answer', sdp: signal.sdp });
         while (peer.pendingCandidates?.length) {
           const candidate = peer.pendingCandidates.shift();
@@ -379,12 +404,20 @@ export function JamProvider({ children }) {
         }
         addLog('SDP', `Remote answer accepted from peer ${fromId.slice(0, 8)}.`);
       } else if (signal.type === 'candidate' && signal.candidate) {
+        const peer = createPeer(fromId, false);
         const candidateInit = { candidate: signal.candidate, sdpMid: signal.sdpMid, sdpMLineIndex: signal.sdpMLineIndex };
         if (peer.connection.remoteDescription && peer.connection.remoteDescription.type) {
           await peer.connection.addIceCandidate(candidateInit);
         } else {
           peer.pendingCandidates.push(candidateInit);
         }
+      } else if (signal.type === 'reconnect_request') {
+        closePeer(fromId);
+        const peer = createPeer(fromId, true);
+        const offer = await peer.connection.createOffer({ iceRestart: true });
+        await peer.connection.setLocalDescription(offer);
+        await dispatchSignal(fromId, { type: 'offer', sdp: offer.sdp });
+        addLog('SDP', `Reconnecting tunnel with peer ${fromId.slice(0, 8)} via ICE restart.`);
       }
     } catch {
       if (peersRef.current.size === 0) {
@@ -392,7 +425,7 @@ export function JamProvider({ children }) {
       }
       addLog('ERR', `Signaling negotiation retry with peer ${fromId.slice(0, 8)}.`);
     }
-  }, [createPeer, dispatchSignal, addLog]);
+  }, [createPeer, closePeer, dispatchSignal, addLog]);
 
   // Initialize Hybrid Signaling (Socket.io with automatic Serverless REST fallback)
   useEffect(() => {
@@ -516,16 +549,28 @@ export function JamProvider({ children }) {
           }
         }
 
-        // 4. Detect new peers that we haven't handshaked with
+        // 4. Detect new peers or auto-heal disconnected peers
         if (Array.isArray(data.peers)) {
+          setPeersList(data.peers.map((p) => p.peerId));
+
           for (const remote of data.peers) {
-            if (remote.peerId !== myPeerIdRef.current && !peersRef.current.has(remote.peerId)) {
-              if (myPeerIdRef.current > remote.peerId) {
-                addLog('JOIN', `Discovered peer ${remote.peerId.slice(0, 8)}. Initiating WebRTC offer...`);
-                const peer = createPeer(remote.peerId, true);
-                const offer = await peer.connection.createOffer();
-                await peer.connection.setLocalDescription(offer);
-                await dispatchSignal(remote.peerId, { type: 'offer', sdp: offer.sdp });
+            if (remote.peerId !== myPeerIdRef.current) {
+              const existing = peersRef.current.get(remote.peerId);
+              const isDisconnected = !existing ||
+                ['failed', 'closed'].includes(existing.connection?.connectionState) ||
+                ['failed', 'closed'].includes(existing.connection?.iceConnectionState);
+
+              if (isDisconnected) {
+                if (existing) closePeer(remote.peerId);
+                if (myPeerIdRef.current > remote.peerId) {
+                  addLog('JOIN', `Mesh tunnel reset with peer ${remote.peerId.slice(0, 8)}. Sending offer...`);
+                  const peer = createPeer(remote.peerId, true);
+                  const offer = await peer.connection.createOffer({ iceRestart: true });
+                  await peer.connection.setLocalDescription(offer);
+                  await dispatchSignal(remote.peerId, { type: 'offer', sdp: offer.sdp });
+                } else {
+                  await dispatchSignal(remote.peerId, { type: 'reconnect_request' });
+                }
               }
             }
           }
@@ -541,12 +586,17 @@ export function JamProvider({ children }) {
     };
   }, [joinedRoom, createPeer, dispatchSignal, processSignal, handlePlaybackSync, handlePlaylistSync, addLog]);
 
-  // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab!
+  // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab or changes network!
   useEffect(() => {
     const handleTabResume = () => {
       const active = joinedRoomRef.current || sessionStorage.getItem('reveria:active_jam_room');
       if (!document.hidden && active) {
-        addLog('SYS', 'Browser tab active: Refreshing room mesh and synchronization.');
+        addLog('SYS', 'Network / tab active: Refreshing room mesh and synchronization.');
+        lastServerVersionRef.current = 0;
+        lastPolledVersionRef.current = 0;
+        peersRef.current.forEach((_, id) => closePeer(id));
+        peersRef.current.clear();
+
         apiRequest(`/session/poll?roomId=${active}&peerId=${myPeerIdRef.current}`)
           .then((data) => {
             if (data?.ok) {

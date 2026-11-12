@@ -4,15 +4,24 @@ const env = require('../config/env');
 const User = require('../models/User');
 
 async function createAdmin() {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password || password.length < 12) throw new Error('Set ADMIN_EMAIL and an ADMIN_PASSWORD of at least 12 characters.');
+  const email = (process.argv[2] || process.env.ADMIN_EMAIL || 'admin@riveria.com').trim().toLowerCase();
+  const password = process.argv[3] || process.env.ADMIN_PASSWORD || 'RiveriaAdmin2026!';
+  
+  console.log(`Connecting to database to provision admin: ${email}...`);
   await mongoose.connect(env.MONGODB_URI);
   let user = await User.findOne({ email }).select('+password');
-  if (!user) user = new User({ email, password, role: 'admin' });
-  else user.role = 'admin';
-  await user.save();
-  console.log(`Admin account ready: ${email}`);
+  if (!user) {
+    user = new User({ email, password, role: 'admin' });
+    await user.save();
+    console.log(`Created new admin account: ${email}`);
+  } else {
+    user.role = 'admin';
+    if (process.argv[3] || process.env.ADMIN_PASSWORD) {
+      user.password = password;
+    }
+    await user.save();
+    console.log(`Updated existing user to admin role: ${email}`);
+  }
   await mongoose.disconnect();
 }
 

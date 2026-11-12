@@ -21,7 +21,9 @@ export function AuthProvider({ children }) {
     let active = true;
     apiRequest('/auth/me')
       .then((profile) => active && setUser(profile))
-      .catch(() => active && logout())
+      .catch((err) => {
+        if (err?.status === 401 && active) logout();
+      })
       .finally(() => active && setIsLoading(false));
     return () => { active = false; };
   }, [token, logout]);

@@ -20,12 +20,16 @@ const server = http.createServer(app);
 const allowedOrigins = new Set(env.CLIENT_ORIGIN.split(',').map((origin) => origin.trim()));
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-    callback(new Error('Origin is not allowed by CORS'));
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
+    if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return callback(null, true);
+    return callback(null, false);
   },
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Authorization', 'Content-Type'],
-  maxAge: 86400
+  maxAge: 86400,
+  credentials: true
 };
 
 const io = new Server(server, { cors: corsOptions, transports: ['websocket', 'polling'] });

@@ -101,21 +101,17 @@ export default function LandingPage() {
       <header className="fixed top-0 left-0 w-full z-50 bg-[#0e0e0f]/80 backdrop-blur-2xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 h-20 flex items-center justify-between">
           {/* Logo using product identity */}
-          <Link to="/" className="flex items-center gap-3.5 group">
-            <div className="w-9 h-9 rounded-full border border-white/10 bg-gradient-to-br from-[#d0bcff] to-[#8fcdff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.35)] transition-transform duration-500 group-hover:scale-105">
-              <img
-                src="/favicon.svg"
-                alt="Riveria Emblem"
-                className="w-5 h-5 object-contain"
-              />
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-full border border-white/10 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)] transition-transform duration-300 group-hover:scale-105">
+              <span className="material-symbols-outlined text-black font-semibold text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                graphic_eq
+              </span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-base font-bold tracking-widest text-[#d0bcff] uppercase">
-                Riveria
-              </span>
-              <span className="text-[10px] tracking-wider text-zinc-400 font-mono -mt-0.5">
-                Music Engine
-              </span>
+            <div>
+              <h1 className="text-base font-bold text-[#d0bcff] tracking-tight">
+                Riveria Music
+              </h1>
+              <p className="text-[11px] text-slate-400">High-Fidelity Audio</p>
             </div>
           </Link>
 
@@ -352,12 +348,10 @@ export default function LandingPage() {
                       transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
                       className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-white/10 bg-gradient-to-tr from-[#1b1528] to-[#0e0e0f] flex items-center justify-center shadow-inner"
                     >
-                      <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-[#d0bcff]/10 flex items-center justify-center">
-                        <img
-                          src="/favicon.svg"
-                          alt="Chamber Center"
-                          className="w-6 h-6 object-contain"
-                        />
+                      <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)]">
+                        <span className="material-symbols-outlined text-black text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          graphic_eq
+                        </span>
                       </div>
                     </motion.div>
                     <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/80 uppercase tracking-widest">
@@ -638,19 +632,17 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 flex flex-col gap-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full border border-white/10 bg-gradient-to-br from-[#d0bcff] to-[#8fcdff] flex items-center justify-center">
-                <img
-                  src="/favicon.svg"
-                  alt="Riveria Emblem"
-                  className="w-4 h-4 object-contain"
-                />
+              <div className="w-10 h-10 rounded-full border border-white/10 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)]">
+                <span className="material-symbols-outlined text-black text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  graphic_eq
+                </span>
               </div>
               <div>
-                <span className="text-sm font-bold tracking-widest text-[#d0bcff] uppercase">
-                  Riveria
+                <span className="text-base font-bold tracking-tight text-[#d0bcff]">
+                  Riveria Music
                 </span>
-                <p className="text-xs text-zinc-500 italic font-serif">
-                  A sanctuary for the wandering mind.
+                <p className="text-xs text-slate-400">
+                  High-Fidelity Audio
                 </p>
               </div>
             </div>

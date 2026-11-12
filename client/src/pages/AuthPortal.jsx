@@ -38,7 +38,7 @@ function AuthPortal() {
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-slate-400 uppercase tracking-widest font-semibold ml-1">Password</label>
                         <input
-                            type="password" placeholder="12+ characters" minLength="12" required
+                            type="password" placeholder={isLogin ? "Your password" : "6+ characters"} minLength={isLogin ? 1 : 6} required
                             value={password} onChange={(e) => setPassword(e.target.value)}
                             className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-primary focus:outline-none transition-colors"
                         />

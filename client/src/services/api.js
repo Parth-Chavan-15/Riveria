@@ -1,11 +1,26 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-let accessToken = sessionStorage.getItem('riveria_access_token');
+function readStoredToken() {
+  try {
+    return localStorage.getItem('riveria_access_token') || sessionStorage.getItem('riveria_access_token');
+  } catch {
+    return null;
+  }
+}
+
+let accessToken = readStoredToken();
 
 export function setAccessToken(token) {
   accessToken = token;
-  if (token) sessionStorage.setItem('riveria_access_token', token);
-  else sessionStorage.removeItem('riveria_access_token');
+  try {
+    if (token) {
+      localStorage.setItem('riveria_access_token', token);
+      sessionStorage.setItem('riveria_access_token', token);
+    } else {
+      localStorage.removeItem('riveria_access_token');
+      sessionStorage.removeItem('riveria_access_token');
+    }
+  } catch {}
 }
 
 export function getAccessToken() {
@@ -24,7 +39,11 @@ export async function apiRequest(path, options = {}) {
   if (response.status === 204) return null;
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    const error = new Error(data?.error?.message || data?.error || 'Request failed');
+    let message = data?.error?.message || data?.error;
+    if (data?.error?.details && Array.isArray(data.error.details) && data.error.details.length > 0) {
+      message = data.error.details.map((d) => d.message).join('. ');
+    }
+    const error = new Error(message || 'Request failed');
     error.status = response.status;
     error.details = data?.error?.details;
     throw error;

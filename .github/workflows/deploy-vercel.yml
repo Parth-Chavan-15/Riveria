@@ -14,6 +14,11 @@ jobs:
   deploy-to-vercel:
     name: Deploy to Vercel Production
     runs-on: ubuntu-latest
+    env:
+      VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

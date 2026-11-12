@@ -5,13 +5,19 @@ import { usePlayer } from '../hooks/usePlayer';
 export default function Settings() {
   const { user, logout } = useAuth();
   const { localTracks } = usePlayer();
-  const [streamQuality, setStreamQuality] = useState('lossless');
-  const [latencyMode, setLatencyMode] = useState('ultra-low');
-  const [normalizeVolume, setNormalizeVolume] = useState(true);
+  const [streamQuality, setStreamQuality] = useState(() => localStorage.getItem('reveria:streamQuality') || 'lossless');
+  const [latencyMode, setLatencyMode] = useState(() => localStorage.getItem('reveria:latencyMode') || 'ultra-low');
+  const [normalizeVolume, setNormalizeVolume] = useState(() => {
+    const stored = localStorage.getItem('reveria:normalizeVolume');
+    return stored !== null ? stored === 'true' : true;
+  });
   const [savedMessage, setSavedMessage] = useState('');
 
   const handleSave = () => {
-    setSavedMessage('Settings successfully updated.');
+    localStorage.setItem('reveria:streamQuality', streamQuality);
+    localStorage.setItem('reveria:latencyMode', latencyMode);
+    localStorage.setItem('reveria:normalizeVolume', String(normalizeVolume));
+    setSavedMessage('Settings successfully updated and saved to device.');
     setTimeout(() => setSavedMessage(''), 3000);
   };
 

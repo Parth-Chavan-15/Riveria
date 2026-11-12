@@ -5,8 +5,9 @@ import { PlayerContext } from './playerContextDef';
 
 function sourceFor(track) {
   if (track.localUrl) return track.localUrl;
+  if (track._id && track.type !== 'Local') return apiUrl(`/tracks/${track._id}/stream`);
   if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
-  if (track.audioSrc) return track.audioSrc;
+  if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) return track.audioSrc;
   return '';
 }
 

@@ -64,18 +64,16 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950',
     imageSrc: '/covers/sunflower.png',
-    audioSrc: '/audio/post-malone-sunflower.mp3',
     audioFile: { filename: 'post-malone-sunflower.mp3', mimeType: 'audio/mpeg' },
   },
   {
-    _id: '6af5939f6cb9fb52c4da8997',
+    _id: '6af537969bb5c204242f3a2c',
     title: 'Birds',
     artist: 'Imagine Dragons',
-    duration: '03:39',
+    duration: '03:42',
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
     imageSrc: '/covers/birds.jpg',
-    audioSrc: '/audio/imagine-dragons-birds.mp3',
     audioFile: { filename: 'imagine-dragons-birds.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -86,7 +84,6 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-purple-600 via-indigo-700 to-zinc-950',
     imageSrc: '/covers/thunder.jpg',
-    audioSrc: '/audio/imagine-dragons-thunder.mp3',
     audioFile: { filename: 'imagine-dragons-thunder.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -97,18 +94,16 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
     imageSrc: '/covers/believer.jpg',
-    audioSrc: '/audio/imagine-dragons-believer.mp3',
     audioFile: { filename: 'imagine-dragons-believer.mp3', mimeType: 'audio/mpeg' },
   },
   {
-    _id: '6af593a16cb9fb52c4da89b4',
+    _id: '6af537969bb5c204242f3a2d',
     title: 'Happier',
     artist: 'Marshmello ft. Bastille',
     duration: '03:53',
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-zinc-950',
     imageSrc: '/covers/happier.jpg',
-    audioSrc: '/audio/marshmello-happier.mp3',
     audioFile: { filename: 'marshmello-happier.mp3', mimeType: 'audio/mpeg' },
   },
 ];
@@ -305,9 +300,9 @@ export default function LandingPage() {
 
   const getAudioUrl = useCallback((track) => {
     if (!track) return '';
-    // Prefer direct static asset path for instant 0ms cached response
-    if (track.audioSrc) return track.audioSrc;
+    if (track._id && track._id.length === 24) return apiUrl(`/tracks/${track._id}/stream`);
     if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+    if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) return track.audioSrc;
     return '';
   }, []);
 
@@ -315,10 +310,11 @@ export default function LandingPage() {
   useEffect(() => {
     // A. Immediately prime HTML5 Audio elements for all 5 movements on Turn 0 (0ms)
     STATIC_MOVEMENT_TRACKS.forEach((track) => {
+      const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
       if (!audioPoolRef.current.has(track._id)) {
         const audioElem = new Audio();
         audioElem.preload = 'auto';
-        audioElem.src = track.audioSrc;
+        audioElem.src = streamUrl;
         audioElem.volume = volume / 100;
         audioElem.load(); // Prime initial byte buffer in browser memory
         audioPoolRef.current.set(track._id, audioElem);
@@ -340,7 +336,7 @@ export default function LandingPage() {
           cloudTracksRef.current = ordered;
 
           ordered.forEach((track) => {
-            const url = track.audioSrc || apiUrl(`/tracks/${track._id}/stream`);
+            const url = apiUrl(`/tracks/${track._id}/stream`);
             if (!audioPoolRef.current.has(track._id)) {
               const audioElem = new Audio();
               audioElem.preload = 'auto';

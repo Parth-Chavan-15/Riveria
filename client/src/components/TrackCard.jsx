@@ -1,7 +1,7 @@
 import { usePlayer } from "../hooks/usePlayer";
 import { useAuth } from "../hooks/useAuth";
 
-function TrackCard({ trackData, onDelete }) {
+function TrackCard({ trackData, queue, onDelete }) {
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();
   const { user } = useAuth();
   const { _id, title, artist, duration, type, imageColor, imageSrc, localUrl } = trackData;
@@ -14,7 +14,7 @@ function TrackCard({ trackData, onDelete }) {
     if (currentTrack?._id === _id) {
       togglePlay();
     } else {
-      playTrack(trackData);
+      playTrack(trackData, queue);
     }
   };
 

@@ -4,6 +4,7 @@ import { audioCoordinator } from '../services/audioCoordinator';
 import { PlayerContext } from './playerContextDef';
 
 function sourceFor(track) {
+  if (!track) return '';
   if (track.localUrl) return track.localUrl;
   if (track._id && track.type !== 'Local') return apiUrl(`/tracks/${track._id}/stream`);
   if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
@@ -21,9 +22,29 @@ export function PlayerProvider({ children }) {
   const [localTracks, setLocalTracks] = useState([]);
   const localTracksRef = useRef([]);
 
+  // Queue & Navigation state
+  const [queue, setQueue] = useState([]);
+  const queueRef = useRef([]);
+  const [isShuffle, setIsShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
+
+  // Volume & Mute state
+  const [volume, setVolumeState] = useState(() => {
+    const saved = localStorage.getItem('reveria:volume');
+    return saved !== null ? Number(saved) : 80;
+  });
+  const [isMuted, setIsMuted] = useState(false);
+  const prevVolumeRef = useRef(80);
+
+  // Sync ref with state
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
   useEffect(() => {
     const audio = audioRef.current;
     audio.preload = 'auto';
+    audio.volume = isMuted ? 0 : volume / 100;
     audioCoordinator.register(audio);
 
     const onTime = () => setPosition(audio.currentTime || 0);
@@ -68,24 +89,59 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('error', onError);
       localTracksRef.current.forEach((track) => track.localUrl && URL.revokeObjectURL(track.localUrl));
     };
-  }, []);
+  }, [isMuted, volume]);
 
-  const playTrack = useCallback(async (track) => {
+  const setVolume = useCallback((val) => {
+    const clamped = Math.max(0, Math.min(100, Number(val)));
+    setVolumeState(clamped);
+    localStorage.setItem('reveria:volume', String(clamped));
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : clamped / 100;
+    }
+    if (clamped > 0 && isMuted) {
+      setIsMuted(false);
+    }
+  }, [isMuted]);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((muted) => {
+      const next = !muted;
+      if (next) {
+        prevVolumeRef.current = volume;
+        if (audioRef.current) audioRef.current.volume = 0;
+      } else {
+        if (audioRef.current) audioRef.current.volume = (prevVolumeRef.current || 80) / 100;
+      }
+      return next;
+    });
+  }, [volume]);
+
+  const playTrack = useCallback(async (track, newQueue = null) => {
+    if (!track) return;
     const source = sourceFor(track);
     if (!source) {
-      setError('This cloud track does not have a playable audio source yet.');
+      setError('This cloud track does not have a playable audio stream.');
       setCurrentTrack(track);
       return;
     }
+
+    if (newQueue && Array.isArray(newQueue) && newQueue.length > 0) {
+      setQueue(newQueue);
+      queueRef.current = newQueue;
+    }
+
     const audio = audioRef.current;
     setError('');
+
     if (currentTrack?._id !== track._id) {
       audio.src = source;
       audio.preload = 'auto';
+      audio.volume = isMuted ? 0 : volume / 100;
       audio.load();
       setCurrentTrack(track);
       setPosition(0);
     }
+
     try {
       audioCoordinator.claimExclusivePlayback(audio, 'player-context');
       await audio.play();
@@ -94,7 +150,7 @@ export function PlayerProvider({ children }) {
         setError('Playback was blocked. Tap play again to allow audio.');
       }
     }
-  }, [currentTrack]);
+  }, [currentTrack, isMuted, volume]);
 
   const togglePlay = useCallback(async () => {
     if (!currentTrack) return;
@@ -108,13 +164,89 @@ export function PlayerProvider({ children }) {
           setError('Playback was blocked by the browser.');
         }
       }
-    } else audio.pause();
+    } else {
+      audio.pause();
+    }
   }, [currentTrack]);
+
+  const playNext = useCallback(() => {
+    const currentQueue = queueRef.current.length > 0 ? queueRef.current : localTracksRef.current;
+    if (!currentQueue || currentQueue.length === 0) return;
+
+    if (repeatMode === 'one' && currentTrack) {
+      const audio = audioRef.current;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      return;
+    }
+
+    if (isShuffle && currentQueue.length > 1) {
+      let randIdx;
+      do {
+        randIdx = Math.floor(Math.random() * currentQueue.length);
+      } while (currentQueue[randIdx]._id === currentTrack?._id);
+      playTrack(currentQueue[randIdx]);
+      return;
+    }
+
+    const currentIndex = currentQueue.findIndex((t) => t._id === currentTrack?._id);
+    if (currentIndex === -1) {
+      playTrack(currentQueue[0]);
+    } else if (currentIndex < currentQueue.length - 1) {
+      playTrack(currentQueue[currentIndex + 1]);
+    } else if (repeatMode === 'all') {
+      playTrack(currentQueue[0]);
+    }
+  }, [currentTrack, isShuffle, repeatMode, playTrack]);
+
+  const playPrevious = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio.currentTime > 3) {
+      audio.currentTime = 0;
+      setPosition(0);
+      return;
+    }
+
+    const currentQueue = queueRef.current.length > 0 ? queueRef.current : localTracksRef.current;
+    if (!currentQueue || currentQueue.length === 0) return;
+
+    const currentIndex = currentQueue.findIndex((t) => t._id === currentTrack?._id);
+    if (currentIndex > 0) {
+      playTrack(currentQueue[currentIndex - 1]);
+    } else {
+      playTrack(currentQueue[currentQueue.length - 1]);
+    }
+  }, [currentTrack, playTrack]);
+
+  const toggleShuffle = useCallback(() => {
+    setIsShuffle((prev) => !prev);
+  }, []);
+
+  const toggleRepeat = useCallback(() => {
+    setRepeatMode((prev) => {
+      if (prev === 'off') return 'all';
+      if (prev === 'all') return 'one';
+      return 'off';
+    });
+  }, []);
+
+  // Handle track ended auto-advance
+  useEffect(() => {
+    const audio = audioRef.current;
+    const onEnded = () => {
+      playNext();
+    };
+    audio.addEventListener('ended', onEnded);
+    return () => {
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, [playNext]);
 
   const seek = useCallback((seconds) => {
     const audio = audioRef.current;
-    audio.currentTime = Math.max(0, Math.min(seconds, Number.isFinite(audio.duration) ? audio.duration : seconds));
-    setPosition(audio.currentTime);
+    const target = Math.max(0, Math.min(seconds, Number.isFinite(audio.duration) ? audio.duration : seconds));
+    audio.currentTime = target;
+    setPosition(target);
   }, []);
 
   const mountLocalFiles = useCallback((files) => {
@@ -124,9 +256,10 @@ export function PlayerProvider({ children }) {
       artist: 'This device',
       duration: 'Local',
       type: 'Local',
-      imageColor: 'bg-gradient-to-br from-cyan-700 to-violet-950',
+      imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950',
       localUrl: URL.createObjectURL(file),
-      fileSize: file.size
+      fileSize: file.size,
+      rawFile: file
     }));
     setLocalTracks((tracks) => {
       const next = [...mounted, ...tracks];
@@ -144,17 +277,78 @@ export function PlayerProvider({ children }) {
       localTracksRef.current = next;
       return next;
     });
-    if (currentTrack?._id === id) audioRef.current.pause();
+
+    if (currentTrack?._id === id) {
+      const audio = audioRef.current;
+      audio.pause();
+      audio.src = '';
+      setCurrentTrack(null);
+      setIsPlaying(false);
+      setPosition(0);
+      setDuration(0);
+    }
   }, [currentTrack]);
 
   const syncPlayback = useCallback(async ({ trackId, position: remotePosition, isPlaying: remoteIsPlaying }, tracks = []) => {
-    const track = [...tracks, ...localTracks].find((item) => item._id === trackId);
+    const allTracks = [...tracks, ...localTracksRef.current];
+    const track = allTracks.find((item) => item._id === trackId);
     if (!track) return;
-    await playTrack(track);
+    await playTrack(track, allTracks);
     seek(remotePosition);
-    if (!remoteIsPlaying) audioRef.current.pause();
-  }, [localTracks, playTrack, seek]);
+    if (!remoteIsPlaying) {
+      audioRef.current.pause();
+    }
+  }, [playTrack, seek]);
 
-  const value = useMemo(() => ({ currentTrack, isPlaying, position, duration, error, localTracks, playTrack, togglePlay, seek, mountLocalFiles, removeLocalTrack, syncPlayback }), [currentTrack, isPlaying, position, duration, error, localTracks, playTrack, togglePlay, seek, mountLocalFiles, removeLocalTrack, syncPlayback]);
+  const value = useMemo(() => ({
+    currentTrack,
+    isPlaying,
+    position,
+    duration,
+    error,
+    localTracks,
+    queue,
+    isShuffle,
+    repeatMode,
+    volume,
+    isMuted,
+    playTrack,
+    togglePlay,
+    playNext,
+    playPrevious,
+    toggleShuffle,
+    toggleRepeat,
+    setVolume,
+    toggleMute,
+    seek,
+    mountLocalFiles,
+    removeLocalTrack,
+    syncPlayback
+  }), [
+    currentTrack,
+    isPlaying,
+    position,
+    duration,
+    error,
+    localTracks,
+    queue,
+    isShuffle,
+    repeatMode,
+    volume,
+    isMuted,
+    playTrack,
+    togglePlay,
+    playNext,
+    playPrevious,
+    toggleShuffle,
+    toggleRepeat,
+    setVolume,
+    toggleMute,
+    seek,
+    mountLocalFiles,
+    removeLocalTrack,
+    syncPlayback
+  ]);
+
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

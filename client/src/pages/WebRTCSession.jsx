@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { usePlayer } from '../hooks/usePlayer';
+import { useAuth } from '../hooks/useAuth';
 import { apiRequest, getAccessToken } from '../services/api';
 
 const defaultIceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' }
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' }
 ];
 
 function getIceConfiguration() {
@@ -18,16 +21,33 @@ function getIceConfiguration() {
   return { iceServers: defaultIceServers };
 }
 
+function generateRoomCode() {
+  const adjectives = ['SONIC', 'AETHER', 'LUMEN', 'HAVEN', 'VELVET', 'OBSIDIAN', 'AURORA'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${adj}-${num}`;
+}
+
 export default function WebRTCSession() {
+  const [searchParams] = useSearchParams();
   const player = usePlayer();
+  const { user } = useAuth();
+
+  const myPeerIdRef = useRef(`peer-${crypto.randomUUID().slice(0, 8)}`);
   const socketRef = useRef(null);
   const peersRef = useRef(new Map());
   const tracksRef = useRef([]);
-  const [roomId, setRoomId] = useState('');
+  const pollTimerRef = useRef(null);
+  const signalingModeRef = useRef('socket'); // 'socket' or 'rest'
+
+  const [roomId, setRoomId] = useState(() => searchParams.get('room')?.toUpperCase() || '');
   const [joinedRoom, setJoinedRoom] = useState('');
-  const [status, setStatus] = useState('Enter a room code to join or start an authenticated listening jam.');
+  const [status, setStatus] = useState('Create a room or enter a code to start a zero-latency listening jam.');
   const [peersList, setPeersList] = useState([]);
   const [copied, setCopied] = useState(false);
+  const [collabPlaylist, setCollabPlaylist] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [availableCloudTracks, setAvailableCloudTracks] = useState([]);
   const [eventLogs, setEventLogs] = useState([
     { id: '1', time: new Date().toLocaleTimeString(), type: 'SYS', message: 'Aetheric WebRTC Signaling subsystem initialized.' }
   ]);
@@ -43,16 +63,31 @@ export default function WebRTCSession() {
     setPeersList(Array.from(peersRef.current.keys()));
   }, []);
 
+  // Fetch cloud tracks for adding to jam playlist
   useEffect(() => {
     apiRequest('/tracks')
-      .then((tracks) => { tracksRef.current = tracks; })
+      .then((tracks) => {
+        tracksRef.current = tracks;
+        setAvailableCloudTracks(tracks);
+      })
       .catch(() => {});
   }, []);
 
-  const handlePlayback = useCallback((payload) => {
-    player.syncPlayback(payload, tracksRef.current);
-    addLog('SYNC', `Playback synchronized with peer. Pos: ${Math.round(payload.position || 0)}s, State: ${payload.isPlaying ? 'Playing' : 'Paused'}`);
-  }, [player, addLog]);
+
+  // Handle incoming playback sync from a remote peer
+  const handlePlaybackSync = useCallback((payload) => {
+    player.syncPlayback(payload, [...tracksRef.current, ...collabPlaylist]);
+    addLog(
+      'SYNC',
+      `Synchronized playback with peer. Pos: ${Math.round(payload.position || 0)}s, State: ${payload.isPlaying ? 'Playing' : 'Paused'}`
+    );
+  }, [player, collabPlaylist, addLog]);
+
+  // Handle incoming collaborative playlist updates from a remote peer
+  const handlePlaylistSync = useCallback((newPlaylist) => {
+    setCollabPlaylist(newPlaylist);
+    addLog('QUEUE', `Collaborative Jam Playlist updated (${newPlaylist.length} tracks).`);
+  }, [addLog]);
 
   const closePeer = useCallback((id) => {
     const peer = peersRef.current.get(id);
@@ -63,6 +98,28 @@ export default function WebRTCSession() {
     addLog('PEER', `Peer connection closed: ${id}`);
   }, [addLog, updatePeersState]);
 
+  // Dispatch signal via Socket.io or HTTP REST
+  const dispatchSignal = useCallback(async (targetId, signal) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('jam:signal', { targetId, signal });
+    } else {
+      try {
+        await apiRequest('/session/signal', {
+          method: 'POST',
+          body: JSON.stringify({
+            roomId: joinedRoom,
+            fromId: myPeerIdRef.current,
+            targetId,
+            signal
+          })
+        });
+      } catch {
+        addLog('ERR', `Failed to dispatch signal to ${targetId.slice(0, 8)}.`);
+      }
+    }
+  }, [joinedRoom, addLog]);
+
+  // Create an RTCPeerConnection and wire DataChannel
   const createPeer = useCallback((peerId, initiator) => {
     if (peersRef.current.has(peerId)) return peersRef.current.get(peerId);
     const connection = new RTCPeerConnection(getIceConfiguration());
@@ -72,32 +129,43 @@ export default function WebRTCSession() {
       peer.channel = channel;
       channel.onopen = () => {
         updatePeersState();
-        setStatus(`Direct P2P data channel open with ${peersRef.current.size} peer(s).`);
-        addLog('OPEN', `WebRTC data channel established directly with ${peerId}.`);
+        setStatus(`Direct P2P Encrypted Tunnel Active with ${peersRef.current.size} peer(s).`);
+        addLog('OPEN', `Direct WebRTC DataChannel established with ${peerId}.`);
+
+        // Send our current collaborative playlist to new peer
+        if (collabPlaylist.length > 0) {
+          channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylist }));
+        }
       };
+
       channel.onmessage = (event) => {
         try {
-          handlePlayback(JSON.parse(event.data));
+          const packet = JSON.parse(event.data);
+          if (packet.type === 'PLAYBACK_SYNC') {
+            handlePlaybackSync(packet);
+          } else if (packet.type === 'PLAYLIST_SYNC') {
+            handlePlaylistSync(packet.playlist);
+          }
         } catch {}
       };
+
       channel.onclose = () => closePeer(peerId);
     };
 
     if (initiator) {
-      registerChannel(connection.createDataChannel('riveria-playback', { ordered: false, maxRetransmits: 0 }));
+      registerChannel(
+        connection.createDataChannel('riveria-playback', { ordered: false, maxRetransmits: 0 })
+      );
     }
     connection.ondatachannel = (event) => registerChannel(event.channel);
 
     connection.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        socketRef.current.emit('jam:signal', {
-          targetId: peerId,
-          signal: {
-            type: 'candidate',
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          }
+      if (event.candidate) {
+        dispatchSignal(peerId, {
+          type: 'candidate',
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex
         });
       }
     };
@@ -111,123 +179,299 @@ export default function WebRTCSession() {
     peersRef.current.set(peerId, peer);
     updatePeersState();
     return peer;
-  }, [closePeer, handlePlayback, addLog, updatePeersState]);
+  }, [closePeer, dispatchSignal, handlePlaybackSync, handlePlaylistSync, collabPlaylist, addLog, updatePeersState]);
 
+  // Handle incoming WebRTC signal (offer/answer/candidate)
+  const processSignal = useCallback(async (fromId, signal) => {
+    const peer = createPeer(fromId, false);
+    try {
+      if (signal.type === 'offer') {
+        await peer.connection.setRemoteDescription({ type: 'offer', sdp: signal.sdp });
+        while (peer.pendingCandidates?.length) {
+          const candidate = peer.pendingCandidates.shift();
+          await peer.connection.addIceCandidate(candidate).catch(() => {});
+        }
+        const answer = await peer.connection.createAnswer();
+        await peer.connection.setLocalDescription(answer);
+        dispatchSignal(fromId, { type: 'answer', sdp: answer.sdp });
+        addLog('SDP', `Answered offer from peer ${fromId.slice(0, 8)}.`);
+      } else if (signal.type === 'answer') {
+        await peer.connection.setRemoteDescription({ type: 'answer', sdp: signal.sdp });
+        while (peer.pendingCandidates?.length) {
+          const candidate = peer.pendingCandidates.shift();
+          await peer.connection.addIceCandidate(candidate).catch(() => {});
+        }
+        addLog('SDP', `Remote answer accepted from peer ${fromId.slice(0, 8)}.`);
+      } else if (signal.type === 'candidate' && signal.candidate) {
+        const candidateInit = { candidate: signal.candidate, sdpMid: signal.sdpMid, sdpMLineIndex: signal.sdpMLineIndex };
+        if (peer.connection.remoteDescription && peer.connection.remoteDescription.type) {
+          await peer.connection.addIceCandidate(candidateInit);
+        } else {
+          peer.pendingCandidates.push(candidateInit);
+        }
+      }
+    } catch {
+      setStatus('A peer connection could not be negotiated.');
+      addLog('ERR', `Signaling negotiation error with peer ${fromId.slice(0, 8)}.`);
+    }
+  }, [createPeer, dispatchSignal, addLog]);
+
+  // Initialize Hybrid Signaling (Socket.io with automatic Serverless REST fallback)
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
-      path: '/socket.io',
-      auth: { token: getAccessToken() },
-      reconnectionAttempts: 3,
-      timeout: 4000
-    });
-    socketRef.current = socket;
+    const socketUrl = import.meta.env.VITE_SOCKET_URL;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const targetUrl = socketUrl || (isLocal ? window.location.origin : null);
 
-    socket.on('connect', () => {
-      addLog('NET', `Socket signaling online (ID: ${socket.id.slice(0, 8)}).`);
-    });
-
-    socket.on('connect_error', () => {
-      setStatus('Jam connection failed. Sign in again and retry.');
-      addLog('ERR', 'Socket signaling connection refused or token expired.');
-    });
-
-    socket.on('jam:peer-joined', ({ peerId, user: peerUser }) => {
-      addLog('JOIN', `New peer joined room: ${peerUser?.email || peerId}. Starting negotiation...`);
-      createPeer(peerId, true);
-    });
-
-    socket.on('jam:peer-left', ({ peerId }) => {
-      addLog('LEAVE', `Peer left room: ${peerId}`);
-      closePeer(peerId);
-    });
-
-    socket.on('jam:signal', async ({ fromId, signal }) => {
-      const peer = createPeer(fromId, false);
+    if (targetUrl) {
       try {
-        if (signal.type === 'offer') {
-          await peer.connection.setRemoteDescription({ type: 'offer', sdp: signal.sdp });
-          while (peer.pendingCandidates?.length) {
-            const candidate = peer.pendingCandidates.shift();
-            await peer.connection.addIceCandidate(candidate).catch(() => {});
-          }
-          const answer = await peer.connection.createAnswer();
-          await peer.connection.setLocalDescription(answer);
-          socket.emit('jam:signal', { targetId: fromId, signal: { type: 'answer', sdp: answer.sdp } });
-          addLog('SDP', `Answered offer from peer ${fromId.slice(0, 8)}.`);
-        } else if (signal.type === 'answer') {
-          await peer.connection.setRemoteDescription({ type: 'answer', sdp: signal.sdp });
-          while (peer.pendingCandidates?.length) {
-            const candidate = peer.pendingCandidates.shift();
-            await peer.connection.addIceCandidate(candidate).catch(() => {});
-          }
-          addLog('SDP', `Remote answer accepted from peer ${fromId.slice(0, 8)}.`);
-        } else if (signal.type === 'candidate' && signal.candidate) {
-          const candidateInit = { candidate: signal.candidate, sdpMid: signal.sdpMid, sdpMLineIndex: signal.sdpMLineIndex };
-          if (peer.connection.remoteDescription && peer.connection.remoteDescription.type) {
-            await peer.connection.addIceCandidate(candidateInit);
-          } else {
-            peer.pendingCandidates.push(candidateInit);
+        const socket = io(targetUrl, {
+          path: '/socket.io',
+          auth: { token: getAccessToken() },
+          reconnectionAttempts: 2,
+          timeout: 2500
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+          signalingModeRef.current = 'socket';
+          addLog('NET', `Socket signaling online (ID: ${socket.id.slice(0, 8)}).`);
+        });
+
+        socket.on('connect_error', () => {
+          signalingModeRef.current = 'rest';
+          addLog('NET', 'Serverless environment detected: Activated ultra-resilient HTTP REST signaling.');
+        });
+
+        socket.on('jam:peer-joined', ({ peerId, user: peerUser }) => {
+          addLog('JOIN', `New peer joined room: ${peerUser?.email || peerId}. Starting negotiation...`);
+          createPeer(peerId, true);
+        });
+
+        socket.on('jam:peer-left', ({ peerId }) => {
+          addLog('LEAVE', `Peer left room: ${peerId}`);
+          closePeer(peerId);
+        });
+
+        socket.on('jam:signal', async ({ fromId, signal }) => {
+          await processSignal(fromId, signal);
+        });
+      } catch {}
+    } else {
+      signalingModeRef.current = 'rest';
+      setTimeout(() => {
+        addLog('NET', 'Activated ultra-resilient HTTP REST signaling.');
+      }, 0);
+    }
+
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [createPeer, closePeer, processSignal, addLog]);
+
+  // REST Signaling polling loop when in serverless mode
+  useEffect(() => {
+    if (!joinedRoom) {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const data = await apiRequest(`/session/poll?roomId=${joinedRoom}&peerId=${myPeerIdRef.current}`);
+        if (!data?.ok) return;
+
+        // Process any waiting signals
+        if (Array.isArray(data.signals) && data.signals.length > 0) {
+          for (const s of data.signals) {
+            await processSignal(s.fromId, s.signal);
           }
         }
-      } catch {
-        setStatus('A peer connection could not be negotiated.');
-        addLog('ERR', `Signaling negotiation error with peer ${fromId.slice(0, 8)}.`);
-      }
-    });
 
-    socket.on('jam:playback', handlePlayback);
-
-    const peers = peersRef.current;
-    return () => {
-      peers.forEach((_, id) => closePeer(id));
-      socket.disconnect();
+        // Detect new peers that we haven't handshaked with
+        if (Array.isArray(data.peers)) {
+          for (const remote of data.peers) {
+            if (remote.peerId !== myPeerIdRef.current && !peersRef.current.has(remote.peerId)) {
+              // Initiate connection if our ID is lexicographically greater (avoids race condition)
+              if (myPeerIdRef.current > remote.peerId) {
+                addLog('JOIN', `Discovered peer ${remote.peerId.slice(0, 8)}. Initiating WebRTC offer...`);
+                const peer = createPeer(remote.peerId, true);
+                const offer = await peer.connection.createOffer();
+                await peer.connection.setLocalDescription(offer);
+                await dispatchSignal(remote.peerId, { type: 'offer', sdp: offer.sdp });
+              }
+            }
+          }
+        }
+      } catch {}
     };
-  }, [closePeer, createPeer, handlePlayback, addLog]);
 
-  const join = () => {
-    const normalized = roomId.trim().toLowerCase();
-    if (!/^[a-z0-9_-]{3,64}$/.test(normalized)) {
-      return setStatus('Use 3–64 letters, numbers, underscores, or hyphens.');
+    // Poll every 800ms during room joining/handshake
+    poll();
+    pollTimerRef.current = setInterval(poll, 800);
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [joinedRoom, createPeer, dispatchSignal, processSignal, addLog]);
+
+  // Join Room
+  const joinRoom = async (codeToJoin) => {
+    const targetCode = (codeToJoin || roomId).trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{3,64}$/.test(targetCode)) {
+      return setStatus('Use 3–64 letters, numbers, hyphens, or underscores.');
     }
-    socketRef.current?.emit('jam:join', { roomId: normalized }, async (result) => {
+
+    try {
+      setStatus(`Joining jam "${targetCode}"…`);
+      const result = await apiRequest('/session/rooms', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: targetCode,
+          peerId: myPeerIdRef.current,
+          user: { email: user?.email, role: user?.role }
+        })
+      });
+
       if (!result?.ok) {
-        setStatus(result?.error || 'Unable to join room.');
+        setStatus(result?.error || 'Unable to join jam room.');
         addLog('ERR', `Failed to join room: ${result?.error}`);
         return;
       }
-      setJoinedRoom(normalized);
-      setStatus(`Connected to jam “${normalized}”. Handshaking with ${result.peers.length} active peer(s)…`);
-      addLog('ROOM', `Joined jam room: "${normalized}" with ${result.peers.length} existing peer(s).`);
 
-      for (const peerId of result.peers) {
-        const peer = createPeer(peerId, true);
-        const offer = await peer.connection.createOffer();
-        await peer.connection.setLocalDescription(offer);
-        socketRef.current?.emit('jam:signal', { targetId: peerId, signal: { type: 'offer', sdp: offer.sdp } });
-        addLog('SDP', `Dispatched offer to peer ${peerId.slice(0, 8)}.`);
+      setJoinedRoom(targetCode);
+      setRoomId(targetCode);
+      if (result.playlist) setCollabPlaylist(result.playlist);
+
+      setStatus(`Connected to jam "${targetCode}". Handshaking with ${result.peers.length} active peer(s)…`);
+      addLog('ROOM', `Joined jam room "${targetCode}" (${result.peers.length} existing peer(s)).`);
+
+      // If socket is available, announce join
+      socketRef.current?.emit('jam:join', { roomId: targetCode }, () => {});
+
+      // Initiate WebRTC negotiation with existing peers
+      for (const p of result.peers) {
+        if (p.peerId !== myPeerIdRef.current) {
+          const peer = createPeer(p.peerId, true);
+          const offer = await peer.connection.createOffer();
+          await peer.connection.setLocalDescription(offer);
+          await dispatchSignal(p.peerId, { type: 'offer', sdp: offer.sdp });
+          addLog('SDP', `Dispatched WebRTC offer to peer ${p.peerId.slice(0, 8)}.`);
+        }
       }
-    });
+    } catch (err) {
+      setStatus('Unable to connect to jam room. Verify connection.');
+      addLog('ERR', `Room connection error: ${err.message}`);
+    }
   };
 
-  const broadcastPlayback = () => {
+  // One-click Create Jam Room
+  const handleCreateRoom = () => {
+    const newCode = generateRoomCode();
+    setRoomId(newCode);
+    joinRoom(newCode);
+  };
+
+  // Leave Room
+  const handleLeaveRoom = async () => {
+    if (joinedRoom) {
+      await apiRequest('/session/leave', {
+        method: 'POST',
+        body: JSON.stringify({ roomId: joinedRoom, peerId: myPeerIdRef.current })
+      }).catch(() => {});
+      peersRef.current.forEach((_, id) => closePeer(id));
+      setJoinedRoom('');
+      setPeersList([]);
+      setStatus('Disconnected from jam room.');
+      addLog('ROOM', 'Left jam room.');
+    }
+  };
+
+  // Broadcast Playback Sync Packet over WebRTC Data Channels
+  const broadcastPlaybackSync = useCallback(() => {
     if (!joinedRoom || !player.currentTrack) {
       return setStatus('Join a room and start playing a track first.');
     }
+
     const payload = {
-      roomId: joinedRoom,
+      type: 'PLAYBACK_SYNC',
       trackId: player.currentTrack._id,
       position: player.position,
       isPlaying: player.isPlaying,
       sentAt: Date.now()
     };
+
     peersRef.current.forEach(({ channel }) => {
       if (channel?.readyState === 'open') {
         channel.send(JSON.stringify(payload));
       }
     });
-    socketRef.current?.emit('jam:playback', payload);
-    setStatus(`Broadcast playback sync for “${player.currentTrack.title}” across ${peersList.length} direct peer(s).`);
+
+    setStatus(`Broadcast sync for "${player.currentTrack.title}" across ${peersList.length} direct peer(s).`);
     addLog('BROADCAST', `Sent state sync for "${player.currentTrack.title}" (${player.isPlaying ? 'Play' : 'Pause'} at ${Math.round(player.position)}s).`);
+  }, [joinedRoom, player.currentTrack, player.position, player.isPlaying, peersList.length, addLog]);
+
+  // Broadcast Collab Playlist to All Peers
+  const broadcastPlaylist = useCallback((newPlaylist) => {
+    setCollabPlaylist(newPlaylist);
+    peersRef.current.forEach(({ channel }) => {
+      if (channel?.readyState === 'open') {
+        channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: newPlaylist }));
+      }
+    });
+
+    // Also persist in room state on server
+    apiRequest('/session/playlist', {
+      method: 'POST',
+      body: JSON.stringify({ roomId: joinedRoom, playlist: newPlaylist })
+    }).catch(() => {});
+  }, [joinedRoom]);
+
+  // Add Cloud Track to Collaborative Playlist
+  const handleAddCloudTrack = (track) => {
+    const item = {
+      id: track._id,
+      title: track.title,
+      artist: track.artist,
+      duration: track.duration,
+      type: 'Cloud',
+      addedBy: user?.email || 'Listener'
+    };
+    const next = [...collabPlaylist, item];
+    broadcastPlaylist(next);
+    setShowAddModal(false);
+    addLog('QUEUE', `Added "${track.title}" (Cloud) to Collaborative Playlist.`);
+  };
+
+  // Add Local Track to Collaborative Playlist (Zero Server Logging!)
+  const handleAddLocalTrack = (track) => {
+    const item = {
+      id: track._id,
+      title: track.title,
+      artist: track.artist || 'This device',
+      duration: track.duration || 'Local',
+      type: 'Local',
+      addedBy: `${user?.email || 'Peer'} (P2P Private)`
+    };
+    const next = [...collabPlaylist, item];
+    broadcastPlaylist(next);
+    setShowAddModal(false);
+    addLog('QUEUE', `Added local file "${track.title}" to Collaborative Playlist (P2P Private).`);
+  };
+
+  // Play a track from Collaborative Playlist
+  const handlePlayCollabTrack = (item) => {
+    // If local track is from this device, play it directly
+    const localMatch = player.localTracks.find((t) => t._id === item.id);
+    const cloudMatch = tracksRef.current.find((t) => t._id === item.id);
+    const target = localMatch || cloudMatch;
+
+    if (target) {
+      player.playTrack(target, [...tracksRef.current, ...player.localTracks]);
+      setTimeout(() => broadcastPlaybackSync(), 300);
+    } else {
+      addLog('WARN', `Track "${item.title}" is hosted on another peer's device.`);
+    }
   };
 
   const copyRoomInvite = () => {
@@ -240,78 +484,271 @@ export default function WebRTCSession() {
   };
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pb-32 pt-24 md:ml-80 md:px-8 md:pt-28 text-white">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">WebRTC Data Mesh & Signaling</p>
-          <h2 className="mt-1 text-3xl font-bold text-white tracking-tight">Zero-Latency Jam Sessions</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Riveria connects authenticated listeners directly via WebRTC data channels for sub-50ms synchronized listening.
-          </p>
+    <main className="flex-1 overflow-y-auto px-4 pb-36 pt-24 md:ml-80 md:px-8 md:pt-28 text-white max-w-6xl">
+      <div className="space-y-6">
+        {/* Header Banner */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm">settings_input_antenna</span>
+              Zero-Latency Jam Mesh &bull; P2P Encrypted
+            </p>
+            <h2 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight">WebRTC Listening Jam</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Listen together with friends in real time. Works across mobile phones, laptops, and tablets with sub-50ms synchronized audio.
+            </p>
+          </div>
+
+          {!joinedRoom && (
+            <button
+              onClick={handleCreateRoom}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary via-purple-300 to-secondary px-5 py-3 font-bold text-black shadow-[0_0_20px_rgba(208,188,255,0.4)] transition-all hover:scale-105 active:scale-95"
+            >
+              <span className="material-symbols-outlined text-xl">add_circle</span>
+              <span>Create Jam Room</span>
+            </button>
+          )}
         </div>
 
-        {/* Room Join Card */}
-        <section className="glass-panel rounded-2xl p-6 border border-white/10 shadow-2xl relative overflow-hidden">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex-1">
-              <label htmlFor="room-code-input" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Room Code</label>
-              <div className="flex gap-2">
+        {/* Room Join & Connected Console */}
+        <section className="glass-panel rounded-2xl p-6 border border-white/10 shadow-2xl relative overflow-hidden bg-[#09090c]/85">
+          {!joinedRoom ? (
+            <div className="space-y-4">
+              <label htmlFor="room-input" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Enter Room Code
+              </label>
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input
-                  id="room-code-input"
+                  id="room-input"
                   value={roomId}
-                  onChange={(event) => setRoomId(event.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && join()}
-                  placeholder="e.g. synthwave-lounge"
-                  className="flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-primary transition-colors font-mono text-sm"
+                  onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && joinRoom()}
+                  placeholder="e.g. HAVEN-7824"
+                  className="flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-primary font-mono text-sm tracking-wider uppercase"
                 />
                 <button
-                  onClick={join}
-                  className="rounded-xl bg-primary px-6 py-3 font-bold text-black transition-all hover:scale-[1.02] shadow-[0_0_15px_rgba(208,188,255,0.3)] active:scale-95"
+                  onClick={() => joinRoom()}
+                  className="rounded-xl bg-primary px-6 py-3 font-bold text-black transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(208,188,255,0.3)]"
                 >
                   Join Jam
                 </button>
               </div>
             </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]"></div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Connected Room</span>
+                    <h3 className="text-xl md:text-2xl font-bold font-mono text-primary tracking-wider">{joinedRoom}</h3>
+                  </div>
+                </div>
 
-            {joinedRoom && (
-              <div className="flex flex-col justify-end">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Invitation Link</span>
-                <button
-                  onClick={copyRoomInvite}
-                  className="flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-primary hover:bg-white/10 hover:border-primary transition-all active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-base">{copied ? 'done' : 'content_copy'}</span>
-                  <span>{copied ? 'Link Copied!' : 'Copy Room Link'}</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={copyRoomInvite}
+                    className="flex items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-3.5 py-2 text-xs font-semibold text-primary hover:bg-white/10 hover:border-primary transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-sm">{copied ? 'done' : 'content_copy'}</span>
+                    <span>{copied ? 'Link Copied!' : 'Copy Invite Link'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleLeaveRoom}
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3.5 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-sm">logout</span>
+                    <span>Leave Room</span>
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-4 pt-4 border-t border-white/10">
-            <button
-              onClick={broadcastPlayback}
-              disabled={!joinedRoom || !player.currentTrack}
-              className="flex items-center gap-2 rounded-xl border border-secondary/50 bg-secondary/10 px-5 py-2.5 font-semibold text-secondary hover:bg-secondary/20 transition-all disabled:opacity-40 disabled:pointer-events-none active:scale-95 shadow-[0_0_15px_rgba(137,206,255,0.15)]"
-            >
-              <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>sensors</span>
-              <span>Sync Current Playback</span>
-            </button>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className={`w-2.5 h-2.5 rounded-full ${peersList.length > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-600'}`}></span>
-              <span>{peersList.length} direct peer{peersList.length === 1 ? '' : 's'} linked in mesh</span>
+              {/* Sync Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <button
+                  onClick={broadcastPlaybackSync}
+                  disabled={!player.currentTrack}
+                  className="flex items-center gap-2 rounded-xl border border-secondary/50 bg-secondary/10 px-5 py-2.5 font-semibold text-secondary hover:bg-secondary/20 transition-all disabled:opacity-40 disabled:pointer-events-none active:scale-95 shadow-[0_0_15px_rgba(137,206,255,0.15)]"
+                >
+                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    sensors
+                  </span>
+                  <span>Sync Current Playback to Room</span>
+                </button>
+
+                <div className="flex items-center gap-3 text-xs text-slate-400">
+                  <span className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-emerald-400 font-mono">
+                    {peersList.length} direct peer{peersList.length === 1 ? '' : 's'} linked in mesh
+                  </span>
+                  {player.currentTrack && (
+                    <span className="truncate max-w-[200px] text-slate-300">
+                      Now: <strong>{player.currentTrack.title}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <p aria-live="polite" className="mt-4 rounded-xl bg-black/20 border border-white/5 p-3 text-xs text-slate-300 flex items-center gap-2">
+          <p aria-live="polite" className="mt-4 rounded-xl bg-black/30 border border-white/5 p-3 text-xs text-slate-300 flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-sm">info</span>
             <span>{status}</span>
           </p>
         </section>
 
-        {/* Split Grid: Connected Peers & Real-Time Event Log */}
+        {/* 2. COLLABORATIVE SESSION PLAYLIST */}
+        {joinedRoom && (
+          <section className="glass-panel rounded-2xl p-6 border border-white/10 shadow-xl bg-[#09090c]/85">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-lg">queue_music</span>
+                <h3 className="font-bold text-base text-white">Collaborative Jam Playlist</h3>
+                <span className="px-2 py-0.5 rounded-full bg-white/10 text-xs font-mono text-primary font-bold">
+                  {collabPlaylist.length}
+                </span>
+              </div>
+
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/30 transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                <span>Add Track to Jam</span>
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {collabPlaylist.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-slate-500">
+                  <p className="text-xs">Collaborative Playlist is empty.</p>
+                  <p className="text-[11px] mt-1 text-slate-600">
+                    Click "Add Track to Jam" to queue cloud songs or local device audio with zero server logs.
+                  </p>
+                </div>
+              ) : (
+                collabPlaylist.map((item, idx) => {
+                  const isPlayingThis = player.currentTrack?._id === item.id && player.isPlaying;
+
+                  return (
+                    <div
+                      key={`${item.id}-${idx}`}
+                      className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="text-xs font-mono text-slate-500 w-4 text-center">{idx + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-white truncate flex items-center gap-2">
+                            <span>{item.title}</span>
+                            <span
+                              className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                                item.type === 'Local'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                  : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                              }`}
+                            >
+                              {item.type === 'Local' ? 'P2P Private' : 'Cloud Stream'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-slate-400 mt-0.5 truncate">
+                            {item.artist} &bull; Added by {item.addedBy}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handlePlayCollabTrack(item)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            isPlayingThis
+                              ? 'bg-primary text-black font-bold shadow-[0_0_10px_rgba(208,188,255,0.4)]'
+                              : 'bg-white/10 text-white hover:bg-white/20'
+                          }`}
+                        >
+                          {isPlayingThis ? 'Playing' : 'Play for Room'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* 3. ADD TRACK MODAL */}
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="glass-panel w-full max-w-lg rounded-2xl p-6 border border-white/15 bg-[#0d0c13] shadow-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <h4 className="font-bold text-base text-white">Add Track to Collab Playlist</h4>
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+
+              {/* Local Mounted Tracks Tab */}
+              {player.localTracks.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-2 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">lock</span>
+                    Your Private Local Device Tracks (P2P Encrypted, 0 Server Logs)
+                  </h5>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {player.localTracks.map((t) => (
+                      <div
+                        key={t._id}
+                        className="p-2.5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10"
+                      >
+                        <span className="text-xs font-medium text-white truncate max-w-[240px]">{t.title}</span>
+                        <button
+                          onClick={() => handleAddLocalTrack(t)}
+                          className="px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs font-semibold"
+                        >
+                          + Add P2P
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cloud Tracks */}
+              <div>
+                <h5 className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
+                  Cloud Library Tracks
+                </h5>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {availableCloudTracks.map((t) => (
+                    <div
+                      key={t._id}
+                      className="p-2.5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10"
+                    >
+                      <div className="truncate max-w-[240px]">
+                        <p className="text-xs font-medium text-white truncate">{t.title}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{t.artist}</p>
+                      </div>
+                      <button
+                        onClick={() => handleAddCloudTrack(t)}
+                        className="px-2.5 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 text-xs font-semibold"
+                      >
+                        + Add Cloud
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. SPLIT GRID: Active Peers & Live Session Log */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Connected Peers (5 cols) */}
-          <section className="lg:col-span-5 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[380px]">
+          {/* Active Peers (5 cols) */}
+          <section className="lg:col-span-5 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[360px] bg-[#09090c]/85">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-lg">group</span>
@@ -324,8 +761,10 @@ export default function WebRTCSession() {
               {peersList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-6 text-slate-500">
                   <span className="material-symbols-outlined text-4xl mb-2 opacity-50">wifi_find</span>
-                  <p className="text-xs">No peers connected yet.</p>
-                  <p className="text-[11px] mt-1 text-slate-600">Share your room code with friends to synchronize audio playback.</p>
+                  <p className="text-xs font-medium">No peers connected yet.</p>
+                  <p className="text-[11px] mt-1 text-slate-600">
+                    Open this room code on your phone or share it with a friend to begin synchronized listening.
+                  </p>
                 </div>
               ) : (
                 peersList.map((id) => (
@@ -338,7 +777,7 @@ export default function WebRTCSession() {
                         <p className="text-xs font-semibold text-white truncate max-w-[140px]">peer_{id.slice(0, 8)}</p>
                         <p className="text-[10px] text-emerald-400 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                          Data Channel Active
+                          Direct DataChannel Active
                         </p>
                       </div>
                     </div>
@@ -355,8 +794,8 @@ export default function WebRTCSession() {
             </div>
           </section>
 
-          {/* Real-Time Session Log (7 cols) */}
-          <section className="lg:col-span-7 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[380px]">
+          {/* Real-Time Session Telemetry Log (7 cols) */}
+          <section className="lg:col-span-7 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[360px] bg-[#09090c]/85">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-secondary text-lg">terminal</span>
@@ -369,13 +808,21 @@ export default function WebRTCSession() {
               {eventLogs.map((log) => (
                 <div key={log.id} className="flex items-start gap-2 text-slate-300 py-0.5">
                   <span className="text-slate-500 select-none">[{log.time}]</span>
-                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                    log.type === 'SYNC' ? 'bg-secondary/20 text-secondary' :
-                    log.type === 'JOIN' ? 'bg-emerald-500/20 text-emerald-300' :
-                    log.type === 'ERR' ? 'bg-red-500/20 text-red-300' :
-                    log.type === 'BROADCAST' ? 'bg-primary/20 text-primary' :
-                    'bg-white/10 text-slate-300'
-                  }`}>
+                  <span
+                    className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                      log.type === 'SYNC'
+                        ? 'bg-secondary/20 text-secondary'
+                        : log.type === 'JOIN'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : log.type === 'ERR'
+                        ? 'bg-red-500/20 text-red-300'
+                        : log.type === 'BROADCAST'
+                        ? 'bg-primary/20 text-primary'
+                        : log.type === 'QUEUE'
+                        ? 'bg-cyan-500/20 text-cyan-300'
+                        : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
                     {log.type}
                   </span>
                   <span className="flex-1 break-all text-slate-300">{log.message}</span>

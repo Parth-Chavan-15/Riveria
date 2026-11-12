@@ -251,6 +251,7 @@ export default function Dashboard() {
               <TrackCard
                 key={track._id || track.localUrl}
                 trackData={track}
+                queue={filteredTracks}
                 onDelete={handleDeleteTrack}
               />
             ))}

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { PlayerProvider } from "./context/PlayerContext";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./hooks/useAuth";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import BottomPlayer from "./components/BottomPlayer";
@@ -8,6 +9,8 @@ import Dashboard from "./pages/Dashboard";
 import AuthPortal from "./pages/AuthPortal";
 import LocalSyncHub from "./pages/LocalSyncHub";
 import WebRTCSession from "./pages/WebRTCSession";
+import LandingPage from "./pages/LandingPage";
+import Settings from "./pages/Settings";
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -30,17 +33,20 @@ function AppContent() {
                     <TopBar />
                     <Routes>
                         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                        <Route path="/landing" element={<LandingPage />} />
                         <Route path="/sync" element={<ProtectedRoute><LocalSyncHub /></ProtectedRoute>} />
                         <Route path="/session" element={<ProtectedRoute><WebRTCSession /></ProtectedRoute>} />
-                        <Route path="/settings" element={<ProtectedRoute><main className="flex-1 md:ml-64 p-6 pt-28 text-slate-300">Playback settings are managed by your browser and device.</main></ProtectedRoute>} />
+                        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                         <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
                     <BottomPlayer />
                 </div>
             ) : (
                 <Routes>
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/landing" element={<LandingPage />} />
                     <Route path="/auth" element={<AuthPortal />} />
-                    <Route path="*" element={<Navigate to="/auth" />} />
+                    <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
             )}
         </>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
 function AuthPortal() {
@@ -51,6 +51,17 @@ function AuthPortal() {
                 <button type="button" className="w-full text-slate-400 text-sm mt-6 text-center hover:text-white transition-colors" onClick={() => { clearError(); setIsLogin(!isLogin); }}>
                     {isLogin ? "New to the engine? Initialize here." : "Signature recognized? Authenticate."}
                 </button>
+
+                <div className="mt-6 pt-4 border-t border-white/10 text-center">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/landing')}
+                        className="text-xs text-primary/80 hover:text-primary transition-colors inline-flex items-center gap-1.5"
+                    >
+                        <span className="material-symbols-outlined text-sm">arrow_back</span>
+                        <span>Back to Riveria Overview</span>
+                    </button>
+                </div>
             </div>
         </div>
     );

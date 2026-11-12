@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Track = require('../models/Track');
 const env = require('../config/env');
+const { validateAudioSignature } = require('../utils/audioValidator');
 
 const uploadsDirectory = path.resolve(__dirname, '..', env.UPLOAD_DIR);
 
@@ -60,6 +61,19 @@ exports.deleteTrack = async (req, res, next) => {
 exports.uploadAudio = async (req, res, next) => {
   try {
     if (!req.file) return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'An audio file is required' } });
+
+    // Validate true audio file signature to prevent MIME spoofing
+    const signatureCheck = await validateAudioSignature(req.file.path);
+    if (!signatureCheck.valid) {
+      await fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(422).json({
+        error: {
+          code: 'INVALID_AUDIO_SIGNATURE',
+          message: 'The uploaded file does not match a verified audio format signature'
+        }
+      });
+    }
+
     const track = await Track.create({
       ...req.body,
       type: 'Upload',
@@ -90,10 +104,29 @@ exports.streamAudio = async (req, res, next) => {
       return fs.createReadStream(filePath).on('error', next).pipe(res);
     }
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-    if (!match) return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
-    const start = match[1] ? Number(match[1]) : 0;
-    const end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
-    if (start >= stat.size || start > end) return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
+    if (!match || (!match[1] && !match[2])) {
+      return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
+    }
+
+    let start = 0;
+    let end = stat.size - 1;
+
+    if (!match[1]) {
+      // Suffix range: e.g. bytes=-500 (last 500 bytes)
+      const suffix = Number(match[2]);
+      if (suffix === 0) return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
+      start = Math.max(0, stat.size - suffix);
+    } else {
+      start = Number(match[1]);
+      if (match[2]) {
+        end = Math.min(Number(match[2]), stat.size - 1);
+      }
+    }
+
+    if (start >= stat.size || start > end) {
+      return res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
+    }
+
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
     res.setHeader('Content-Length', end - start + 1);

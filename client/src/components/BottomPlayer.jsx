@@ -1,4 +1,4 @@
-import { usePlayer } from "../context/PlayerContext";
+import { usePlayer } from "../hooks/usePlayer";
 
 function BottomPlayer() {
   const { currentTrack, isPlaying, togglePlay, position, duration, seek, error } = usePlayer();

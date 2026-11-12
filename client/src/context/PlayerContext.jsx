@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl } from '../services/api';
-
-const PlayerContext = createContext(null);
+import { PlayerContext } from './playerContextDef';
 
 function sourceFor(track) {
   if (track.localUrl || track.audioSrc) return track.localUrl || track.audioSrc;
@@ -114,10 +113,4 @@ export function PlayerProvider({ children }) {
 
   const value = useMemo(() => ({ currentTrack, isPlaying, position, duration, error, localTracks, playTrack, togglePlay, seek, mountLocalFiles, removeLocalTrack, syncPlayback }), [currentTrack, isPlaying, position, duration, error, localTracks, playTrack, togglePlay, seek, mountLocalFiles, removeLocalTrack, syncPlayback]);
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
-}
-
-export function usePlayer() {
-  const context = useContext(PlayerContext);
-  if (!context) throw new Error('usePlayer must be used inside PlayerProvider');
-  return context;
 }

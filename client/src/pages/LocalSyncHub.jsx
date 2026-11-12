@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer } from '../hooks/usePlayer';
 
 const formatBytes = (size) => `${(size / 1024 / 1024).toFixed(1)} MB`;
 

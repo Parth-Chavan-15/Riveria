@@ -9,7 +9,12 @@ function attachWebRtcHandlers(io, socket) {
     const parsed = roomSchema.safeParse(payload);
     if (!parsed.success) return acknowledge({ ok: false, error: 'Invalid room code' });
     const room = `jam:${parsed.data.roomId}`;
-    for (const joinedRoom of socket.rooms) if (joinedRoom.startsWith('jam:')) socket.leave(joinedRoom);
+    for (const joinedRoom of socket.rooms) {
+      if (joinedRoom.startsWith('jam:') && joinedRoom !== room) {
+        socket.to(joinedRoom).emit('jam:peer-left', { peerId: socket.id });
+        socket.leave(joinedRoom);
+      }
+    }
     socket.join(room);
     socket.to(room).emit('jam:peer-joined', { peerId: socket.id, user: { id: String(socket.user._id), email: socket.user.email } });
     acknowledge({ ok: true, peerId: socket.id, peers: [...io.sockets.adapter.rooms.get(room) || []].filter((id) => id !== socket.id) });

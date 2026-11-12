@@ -1,16 +1,43 @@
-# React + Vite
+# Riveria Music Engine — Client Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The Riveria client is a high-fidelity hybrid music application built with React 19, Vite 8, React Router 7, and Tailwind CSS 4.
 
-Currently, two official plugins are available:
+## Key Architecture & Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Hero Landing Page (`/landing`, `/`)**:
+  - High-impact dark aesthetic with ambient aurora gradients and animated soundwave visualizers.
+  - Interactive audio engine console with switchable modes: Cloud Stream, Local Device Sandbox, and WebRTC Jam telemetry.
+  - Direct entry point with smooth transitions into the authenticated app.
+- **Discovery Dashboard (`/`)**:
+  - Unified grid presenting cloud-catalog tracks alongside mounted browser-local tracks.
+  - Search and filter by title and artist.
+  - Real-time updates via Socket.IO for track creation, update, and deletion events.
+- **Local Sync Hub (`/sync`)**:
+  - Mount audio files directly from the user's device storage into browser RAM using Object URLs.
+  - 100% private: local files are never transmitted to the backend server.
+- **Zero-Latency Jam Sessions (`/session`)**:
+  - WebRTC Data Channels with Socket.IO signaling and STUN/TURN fallback.
+  - Sub-50ms synchronized playback telemetry (track, position, play/pause state).
+  - Active peer mesh monitor, encrypted invitation links, and live telemetry event log.
+- **Global Settings (`/settings`)**:
+  - Streaming resolution configuration (Lossless, High, Balanced).
+  - WebRTC buffer mode (Zero-Latency, Adaptive, High Stability).
+  - Dynamic volume normalization toggle and local sandbox storage metrics.
+- **Persistent Bottom Player (`BottomPlayer`)**:
+  - Audio playback, Range scrubber, seeking, duration, and error reporting.
 
-## React Compiler
+## Scripts
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Start Vite development server (proxies /api and /socket.io to localhost:5000)
+npm run dev
 
-## Expanding the Oxlint configuration
+# Lint with Oxlint
+npm run lint
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+```

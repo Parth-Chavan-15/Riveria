@@ -1,4 +1,4 @@
-const { z } = require('zod');
+const fs = require('fs');
 
 const validate = (schema) => (req, res, next) => {
     try {
@@ -12,6 +12,9 @@ const validate = (schema) => (req, res, next) => {
         req.params = parsed.params;
         next();
     } catch (error) {
+        if (req.file?.path) {
+            fs.promises.unlink(req.file.path).catch(() => {});
+        }
         if (!error.issues) return next(error);
         return res.status(422).json({
             error: {

@@ -1,4 +1,4 @@
-import { usePlayer } from "../context/PlayerContext";
+import { usePlayer } from "../hooks/usePlayer";
 
 function TrackCard({ trackData }) {
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();

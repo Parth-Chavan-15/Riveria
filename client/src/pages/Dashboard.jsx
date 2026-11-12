@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
 import TrackCard from '../components/TrackCard';
 import { apiRequest, getAccessToken } from '../services/api';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer } from '../hooks/usePlayer';
 
 export default function Dashboard() {
   const [tracks, setTracks] = useState([]);

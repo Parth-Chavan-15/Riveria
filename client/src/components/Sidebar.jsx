@@ -32,6 +32,10 @@ function Sidebar() {
       </ul>
 
       <ul className="flex flex-col gap-2 mt-auto border-t border-glass-border pt-4">
+        <Link to="/landing" className={`flex items-center gap-3 py-3 rounded-lg pl-4 transition-all duration-200 ${path === '/landing' ? 'text-white font-bold border-l-4 border-primary bg-white/10' : 'text-slate-400 hover:bg-glass-surface hover:text-white'}`}>
+          <span className="material-symbols-outlined">auto_awesome</span>
+          <span>Engine Overview</span>
+        </Link>
         <Link to="/settings" className={`flex items-center gap-3 py-3 rounded-lg pl-4 transition-all duration-200 ${path === '/settings' ? 'text-white font-bold border-l-4 border-primary bg-white/10' : 'text-slate-400 hover:bg-glass-surface hover:text-white'}`}>
           <span className="material-symbols-outlined">settings</span>
           <span>Settings</span>

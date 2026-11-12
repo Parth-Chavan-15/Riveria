@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiRequest, getAccessToken, setAccessToken } from '../services/api';
-
-const AuthContext = createContext(null);
+import { AuthContext } from './authContextDef';
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(getAccessToken());
@@ -20,7 +19,6 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!token) return;
     let active = true;
-    setIsLoading(true);
     apiRequest('/auth/me')
       .then((profile) => active && setUser(profile))
       .catch(() => active && logout())
@@ -53,10 +51,4 @@ export function AuthProvider({ children }) {
   }), [user, token, isLoading, error, authenticate, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used inside AuthProvider');
-  return context;
 }

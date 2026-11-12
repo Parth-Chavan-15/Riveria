@@ -15,6 +15,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Compute lowercase image owner
+        run: echo "IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -24,9 +26,9 @@ jobs:
         with:
           context: ./server
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/riveria-server:latest,ghcr.io/${{ github.repository_owner }}/riveria-server:${{ github.sha }}
+          tags: ghcr.io/${{ env.IMAGE_OWNER }}/riveria-server:latest,ghcr.io/${{ env.IMAGE_OWNER }}/riveria-server:${{ github.sha }}
       - uses: docker/build-push-action@v6
         with:
           context: ./client
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/riveria-client:latest,ghcr.io/${{ github.repository_owner }}/riveria-client:${{ github.sha }}
+          tags: ghcr.io/${{ env.IMAGE_OWNER }}/riveria-client:latest,ghcr.io/${{ env.IMAGE_OWNER }}/riveria-client:${{ github.sha }}

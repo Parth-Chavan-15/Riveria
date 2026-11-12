@@ -1,14 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0a0a;
+  --color-background: #0e0e0f;
+  --color-surface: #131314;
+  --color-surface-container-lowest: #0e0e0f;
+  --color-surface-container-low: #1c1b1c;
+  --color-surface-container: #201f20;
+  --color-surface-container-high: #2a2a2b;
+  --color-surface-container-highest: #353436;
+  --color-surface-variant: #353436;
   --color-primary: #d0bcff;
-  --color-secondary: #89ceff;
+  --color-primary-container: #a078ff;
+  --color-primary-fixed-dim: #d0bcff;
+  --color-secondary: #8fcdff;
+  --color-secondary-container: #009ce4;
   --color-tertiary: #fbabff;
+  --color-tertiary-container: #e14ef6;
+  --color-tertiary-fixed-dim: #fbabff;
+  --color-on-surface: #e5e2e3;
+  --color-on-surface-variant: #cbc3d7;
+  --color-outline-variant: #494454;
   --color-glass-surface: rgba(255, 255, 255, 0.05);
   --color-glass-border: rgba(255, 255, 255, 0.1);
-  --font-heading: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-body: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 body {
@@ -18,6 +33,7 @@ body {
   background-attachment: fixed;
   color: #e5e2e3;
   overflow-x: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Glassmorphism Utilities */
@@ -27,7 +43,7 @@ body {
   border: 1px solid var(--color-glass-border);
 }
 .glass-panel:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Custom Sleek Scrollbar */

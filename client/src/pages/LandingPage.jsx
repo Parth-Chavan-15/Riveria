@@ -1,27 +1,26 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Play,
   Pause,
-  Radio,
-  HardDrive,
-  Waves,
-  ShieldCheck,
-  Bell,
-  Volume2,
-  ArrowRight,
-  ChevronRight,
   Disc,
-  Zap,
-  Sparkles,
+  HardDrive,
+  Radio,
+  Waves,
+  ArrowRight,
   Lock,
-  CheckCircle2,
-  Activity,
-  Headphones,
+  Volume2,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Repeat,
   Terminal,
   ExternalLink,
-  Database,
+  Sparkles,
+  CheckCircle2,
+  Sliders,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -32,1006 +31,919 @@ export default function LandingPage() {
   // Interactive Player State
   const [isPlaying, setIsPlaying] = useState(true);
   const [activeTrackIndex, setActiveTrackIndex] = useState(0);
-  const [progress, setProgress] = useState(34);
-  const [activeTab, setActiveTab] = useState('telemetry');
-  const [bellPulse, setBellPulse] = useState(false);
+  const [progress, setProgress] = useState(44);
+  const [volume, setVolume] = useState(84);
+  const [eqHeights, setEqHeights] = useState([
+    45, 75, 90, 60, 80, 95, 70, 85, 65, 50, 35, 20, 55, 70,
+  ]);
 
-  const tracks = [
+  const demoTracks = [
     {
-      title: 'Solaris (Reverie Master)',
-      artist: 'Kroma & The Drift',
+      title: 'Ethereal Oceanography — Movement IV',
+      artist: 'Riveria Chamber Orchestra',
+      mastering: "Côte d'Azur Sound Lab • Studio Master",
+      format: '24-bit / 96kHz FLAC',
+      duration: '06:42',
+      source: 'Node.js Byte-Stream (RFC 9110)',
+    },
+    {
+      title: 'Nocturne in Abyssal Violet',
+      artist: 'Kroma & The Field',
+      mastering: 'Air-Gapped Local Mount (RAM URL)',
+      format: 'Lossless WAV 32-bit',
       duration: '04:18',
-      format: 'FLAC 24-bit / 96kHz',
-      size: '58.4 MB',
-      source: 'Node Byte-Stream',
-      gradient: 'from-cyan-500/30 via-indigo-500/20 to-black',
+      source: 'Local Device File Mount',
     },
     {
       title: 'Sub-Zero Resonance',
-      artist: 'Aethelgard',
-      duration: '03:45',
-      format: 'WAV Lossless 32-bit',
-      size: '76.1 MB',
-      source: 'Air-Gapped Local Mount',
-      gradient: 'from-violet-500/30 via-fuchsia-500/20 to-black',
-    },
-    {
-      title: 'Echoes in the Mesh',
-      artist: 'Neural Session 09',
-      duration: '05:12',
+      artist: 'Aethelgard Session 03',
+      mastering: 'Direct WebRTC Peer Mesh',
       format: 'Opus 510kbps P2P',
-      size: '22.8 MB',
-      source: 'WebRTC P2P Room',
-      gradient: 'from-emerald-500/30 via-cyan-500/20 to-black',
+      duration: '05:04',
+      source: 'WebRTC P2P DataChannel',
     },
   ];
 
-  const currentTrack = tracks[activeTrackIndex];
+  const currentTrack = demoTracks[activeTrackIndex];
 
-  // Simulated player scrubber loop
+  // Equalizer visualizer animation loop
   useEffect(() => {
     if (!isPlaying) return undefined;
     const interval = setInterval(() => {
-      setProgress((prev) => (prev >= 99 ? 0 : prev + 0.45));
-    }, 150);
+      setEqHeights((prev) =>
+        prev.map(() => Math.floor(Math.random() * 75) + 20)
+      );
+    }, 400);
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Periodic notification pulse simulation
+  // Scrubber loop
   useEffect(() => {
-    const pulseInterval = setInterval(() => {
-      setBellPulse(true);
-      setTimeout(() => setBellPulse(false), 2000);
-    }, 8000);
-    return () => clearInterval(pulseInterval);
-  }, []);
+    if (!isPlaying) return undefined;
+    const scrubberInterval = setInterval(() => {
+      setProgress((prev) => (prev >= 99 ? 0 : prev + 0.35));
+    }, 150);
+    return () => clearInterval(scrubberInterval);
+  }, [isPlaying]);
 
   return (
-    <div className="relative min-h-screen bg-[#0a0a0a] text-zinc-100 font-['Montserrat',sans-serif] selection:bg-cyan-500 selection:text-black overflow-x-hidden">
-      {/* Dynamic Ambient Mesh Glow Background */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute -top-[25%] -left-[15%] w-[65vw] h-[65vw] rounded-full bg-radial from-violet-600/15 via-cyan-500/10 to-transparent blur-[140px] animate-pulse duration-[8000ms]" />
-        <div className="absolute top-[40%] -right-[20%] w-[60vw] h-[60vw] rounded-full bg-radial from-cyan-500/15 via-blue-600/10 to-transparent blur-[160px]" />
-        <div className="absolute -bottom-[20%] left-[20%] w-[55vw] h-[55vw] rounded-full bg-radial from-indigo-600/10 via-purple-600/10 to-transparent blur-[150px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
-      </div>
+    <div className="min-h-screen bg-[#0e0e0f] text-[#e5e2e3] font-['Inter',sans-serif] selection:bg-[#a078ff] selection:text-white relative overflow-x-hidden">
+      {/* Ambient Ethereal Violet Glow Spheres */}
+      <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[550px] bg-[#d0bcff]/10 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-[900px] -right-32 w-[600px] h-[600px] bg-[#fbabff]/8 rounded-full blur-[150px] pointer-events-none -z-10" />
+      <div className="absolute top-[2100px] -left-32 w-[550px] h-[550px] bg-[#a078ff]/10 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-[3200px] right-1/4 w-[650px] h-[650px] bg-[#d0bcff]/8 rounded-full blur-[160px] pointer-events-none -z-10" />
 
-      {/* Floating Glassmorphic Navigation */}
-      <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#0a0a0a]/70 backdrop-blur-2xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      {/* Header */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-[#0e0e0f]/85 backdrop-blur-2xl border-b border-white/5 shadow-[0_1px_16px_rgba(0,0,0,0.6)]">
+        <div className="h-20 w-full max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 flex items-center justify-between gap-4">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-cyan-600 to-violet-600 p-[1px] shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all duration-300 group-hover:shadow-[0_0_30px_rgba(6,182,212,0.6)]">
-              <div className="w-full h-full bg-[#0d1117] rounded-[11px] flex items-center justify-center">
-                <Disc className="w-5 h-5 text-cyan-400 transition-transform duration-700 group-hover:rotate-180" />
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#d0bcff] to-[#8fcdff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)]">
+              <Disc className="w-5 h-5 text-black transition-transform duration-700 group-hover:rotate-180" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-['Plus_Jakarta_Sans',sans-serif] font-extrabold text-xl tracking-tight text-white group-hover:text-cyan-300 transition-colors">
-                  RIVERIA
-                </span>
-                <span className="text-[10px] tracking-widest font-mono uppercase px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/50">
-                  ENGINE v2.4
-                </span>
-              </div>
-              <p className="text-[10px] font-medium text-zinc-400 tracking-wider uppercase">
-                Audiophile Reverie System
-              </p>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold tracking-widest text-[#d0bcff] uppercase select-none">
+                Riveria
+              </span>
+              <span className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full bg-[#201f20] text-[#d0bcff] border border-[#d0bcff]/20 font-mono hidden sm:inline-block">
+                Open Engine
+              </span>
             </div>
           </Link>
 
-          {/* Nav Links */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-300">
-            <a href="#arsenal" className="hover:text-cyan-400 transition-colors">The Arsenal</a>
-            <a href="#engine" className="hover:text-cyan-400 transition-colors">Engine Cockpit</a>
-            <a href="#philosophy" className="hover:text-cyan-400 transition-colors">The Daydream</a>
-            <a href="#comparison" className="hover:text-cyan-400 transition-colors">Architecture</a>
+          {/* Navigation Links */}
+          <nav className="hidden lg:flex items-center gap-8 text-xs font-semibold uppercase tracking-[0.14em]">
+            <a
+              href="#experience"
+              className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors duration-200"
+            >
+              Experience
+            </a>
+            <a
+              href="#architecture"
+              className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors duration-200"
+            >
+              Architecture
+            </a>
+            <a
+              href="#hybrid-hub"
+              className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors duration-200"
+            >
+              Local Sync Hub
+            </a>
+            <a
+              href="#open-source"
+              className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors duration-200"
+            >
+              Open Source
+            </a>
           </nav>
 
-          {/* Action CTAs */}
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-emerald-400 px-3 py-1.5 rounded-full bg-emerald-950/40 border border-emerald-500/20">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              P2P Mesh: Ready
-            </div>
+          {/* Header Action CTAs */}
+          <div className="flex items-center gap-3">
+            <a
+              href="#experience"
+              className="hidden sm:inline-flex items-center justify-center px-4 py-2 rounded-full bg-[#2a2a2b]/60 backdrop-blur-xl border border-[#d0bcff]/20 text-[#e5e2e3] text-xs uppercase tracking-widest font-semibold hover:border-[#d0bcff]/40 hover:text-[#d0bcff] transition-all duration-300 shadow-[0_0_15px_rgba(160,120,255,0.12)]"
+            >
+              Explore Stream
+            </a>
 
-            {token ? (
-              <Link
-                to="/"
-                className="relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-black bg-cyan-400 hover:bg-cyan-300 shadow-[0_0_25px_rgba(6,182,212,0.4)] hover:shadow-[0_0_35px_rgba(6,182,212,0.7)] transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0"
-              >
-                Launch Studio
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Link
-                  to="/auth"
-                  className="text-sm font-medium text-zinc-300 hover:text-white transition-colors px-3 py-1.5"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/auth"
-                  className="relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-black bg-gradient-to-r from-cyan-400 to-cyan-300 hover:from-cyan-300 hover:to-cyan-200 shadow-[0_0_25px_rgba(6,182,212,0.4)] hover:shadow-[0_0_35px_rgba(6,182,212,0.7)] transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  Initialize Engine
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-            )}
+            <Link
+              to={destination}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_24px_rgba(160,120,255,0.45)]"
+            >
+              <span>{token ? 'Open Studio' : 'Launch Free App'}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-12 pb-24 lg:pt-20 lg:pb-36 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-4xl mx-auto">
-            {/* Pill Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-8 backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: '6s' }} />
-              <span>BEYOND SPREADSHEETS OF ALBUM ART</span>
-              <span className="text-zinc-500">•</span>
-              <span className="text-zinc-300">REVERIE ENGINE ONLINE</span>
-            </motion.div>
+      {/* Main Content */}
+      <main className="w-full pt-20">
+        {/* 1. HERO SECTION */}
+        <section className="relative w-full max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 pt-16 pb-24 flex flex-col items-center text-center">
+          {/* Status Tag */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#2a2a2b]/70 backdrop-blur-2xl border border-[#d0bcff]/30 shadow-[0_0_20px_rgba(160,120,255,0.15)] mb-8 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-[#d0bcff] shadow-[0_0_8px_#d0bcff]" />
+            <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-medium font-mono">
+              100% Free &amp; Open Architecture • No Subscription • Zero Ads • Local-First
+            </span>
+          </div>
 
-            {/* Massive Headline */}
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.1 }}
-              className="font-['Plus_Jakarta_Sans',sans-serif] text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.08]"
-            >
-              The Edge of Audio.{' '}
-              <br className="hidden sm:inline" />
-              <span className="bg-gradient-to-r from-cyan-300 via-cyan-400 to-violet-400 bg-clip-text text-transparent drop-shadow-[0_0_35px_rgba(6,182,212,0.4)]">
-                Synced to the Millisecond.
-              </span>
-            </motion.h1>
+          {/* Headline - Genuine, grounded, unpretentious */}
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-5xl mb-6 leading-tight">
+            Pure Sound. Open Architecture.{' '}
+            <br className="hidden sm:inline" />
+            <span className="bg-gradient-to-r from-[#d0bcff] via-[#fbabff] to-[#8fcdff] bg-clip-text text-transparent">
+              Completely Free for Everyone.
+            </span>
+          </h1>
 
-            {/* Sub-headline embracing the Reverie concept */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-              className="mt-7 text-lg sm:text-xl text-zinc-300 max-w-3xl mx-auto leading-relaxed font-light"
-            >
-              Derived from <span className="text-cyan-300 font-medium italic">reverie</span> — a state of being pleasantly lost in one’s daydream. Riveria reclaims music from the sanitized corporate feeds, uniting{' '}
-              <span className="text-white font-medium">zero-latency WebRTC peer jams</span>,{' '}
-              <span className="text-white font-medium">air-gapped local storage</span>, and{' '}
-              <span className="text-white font-medium">RFC 9110 byte-range streams</span> into one uncompromising, audiophile-grade engine.
-            </motion.p>
+          {/* Genuine Subtitle */}
+          <p className="text-base sm:text-lg text-[#cbc3d7] max-w-2xl font-light mb-10 leading-relaxed">
+            A personal music space that unifies cloud track discovery, real-time WebRTC collaborative listening rooms, and sovereign local audio mounting. No paywalls, no tracking—engineered simply for people who love music.
+          </p>
 
-            {/* CTAs */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-            >
+          {/* Action Buttons */}
+          <div className="flex flex-col items-center gap-4 mb-16 z-10 w-full max-w-xl">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full">
               <Link
                 to={destination}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-bold text-black bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto] hover:bg-[position:right_center] shadow-[0_0_35px_rgba(6,182,212,0.5)] hover:shadow-[0_0_50px_rgba(6,182,212,0.8)] transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-sm font-semibold uppercase tracking-wider hover:brightness-110 transition-all duration-300 shadow-[0_0_35px_rgba(160,120,255,0.45)] hover:scale-[1.02]"
               >
-                <span>{token ? 'Enter Dashboard Studio' : 'Initialize Engine Free'}</span>
-                <ArrowRight className="w-5 h-5 text-black" />
+                <span>{token ? 'Enter Riveria Studio' : 'Launch Riveria Web (Free)'}</span>
+                <ArrowRight className="w-4 h-4" />
               </Link>
               <a
-                href="#arsenal"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 backdrop-blur-xl transition-all duration-300 hover:text-white"
+                href="#experience"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-[#2a2a2b]/70 backdrop-blur-xl border border-[#d0bcff]/30 text-[#e5e2e3] text-sm uppercase tracking-wider hover:border-[#d0bcff] hover:text-[#d0bcff] transition-all duration-300 hover:bg-[#353436]/40"
               >
-                <Waves className="w-4 h-4 text-cyan-400" />
-                <span>Explore The Arsenal</span>
+                <Play className="w-4 h-4 text-[#d0bcff]" />
+                <span>Explore Interactive Demo</span>
               </a>
-            </motion.div>
+            </div>
 
-            {/* Micro Audiophile Telemetry Strip */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 0.4 }}
-              className="mt-12 pt-8 border-t border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto text-left"
-            >
-              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                <p className="text-[11px] font-mono text-zinc-400 uppercase">Clock Jitter</p>
-                <p className="text-base font-bold text-cyan-400 font-mono mt-0.5">±0.2 ms</p>
-                <p className="text-[10px] text-zinc-500">P2P DataChannel mesh</p>
-              </div>
-              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                <p className="text-[11px] font-mono text-zinc-400 uppercase">Stream Pipeline</p>
-                <p className="text-base font-bold text-cyan-400 font-mono mt-0.5">RFC 9110</p>
-                <p className="text-[10px] text-zinc-500">Node byte-range chunks</p>
-              </div>
-              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                <p className="text-[11px] font-mono text-zinc-400 uppercase">Local Storage</p>
-                <p className="text-base font-bold text-cyan-400 font-mono mt-0.5">Zero Cloud</p>
-                <p className="text-[10px] text-zinc-500">Air-gapped memory buffers</p>
-              </div>
-              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                <p className="text-[11px] font-mono text-zinc-400 uppercase">Audio Guard</p>
-                <p className="text-base font-bold text-cyan-400 font-mono mt-0.5">Magic Byte</p>
-                <p className="text-[10px] text-zinc-500">Binary signature validator</p>
-              </div>
-            </motion.div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-3 text-xs font-mono text-[#cbc3d7]">
+              <span className="flex items-center gap-1.5 text-[#d0bcff]">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Forever Free &amp; Open Source
+              </span>
+              <span className="text-[#494454]">•</span>
+              <span>No Credit Card Required</span>
+              <span className="text-[#494454]">•</span>
+              <span>Instant In-Browser Audio Engine</span>
+            </div>
           </div>
 
-          {/* Floating Glassmorphic Player Mockup */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.5 }}
-            className="mt-16 max-w-5xl mx-auto"
-          >
-            <div className="relative group">
-              {/* Outer Glow Halo */}
-              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-cyan-500/20 via-violet-500/20 to-cyan-500/20 blur-xl opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt" />
+          {/* Hero Showcase Deck with violet/obsidian theme */}
+          <div className="relative w-full max-w-5xl rounded-2xl p-2 bg-gradient-to-b from-[#d0bcff]/20 via-white/5 to-transparent backdrop-blur-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.9)] group border border-[#d0bcff]/20">
+            <div className="relative w-full min-h-[400px] md:h-[500px] rounded-xl overflow-hidden bg-[#0e0e0f] flex flex-col justify-between p-6 sm:p-8">
+              {/* Background Ambient Radial Gradient */}
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(208,188,255,0.15),transparent_60%)] pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(160,120,255,0.12),transparent_60%)] pointer-events-none" />
 
-              {/* Glass Cockpit Container */}
-              <div className="relative rounded-2xl bg-zinc-950/80 border border-white/10 backdrop-blur-2xl shadow-[0_20px_70px_rgba(0,0,0,0.8)] overflow-hidden">
-                {/* Header Bar */}
-                <div className="px-6 py-4 border-b border-white/10 bg-white/[0.02] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-500/80 border border-red-400/40" />
-                      <div className="w-3 h-3 rounded-full bg-yellow-500/80 border border-yellow-400/40" />
-                      <div className="w-3 h-3 rounded-full bg-emerald-500/80 border border-emerald-400/40" />
-                    </div>
-                    <span className="text-xs font-mono text-zinc-400 tracking-wider pl-2 border-l border-white/10">
-                      RIVERIA_CORE // AUDIO_DAW_SURFACE
-                    </span>
-                  </div>
-
-                  {/* Active Peer Avatars */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-cyan-400 flex items-center gap-1.5 bg-cyan-950/50 px-2.5 py-1 rounded-full border border-cyan-800/40">
-                      <Radio className="w-3 h-3 animate-pulse" />
-                      JAM ROOM: #8842 (3 PEERS SYNCED)
-                    </span>
-                    <div className="flex -space-x-1.5 overflow-hidden">
-                      <div className="inline-block h-6 w-6 rounded-full ring-2 ring-zinc-900 bg-cyan-600 text-[10px] font-bold text-center leading-6 text-black">
-                        YO
-                      </div>
-                      <div className="inline-block h-6 w-6 rounded-full ring-2 ring-zinc-900 bg-violet-600 text-[10px] font-bold text-center leading-6 text-white">
-                        TY
-                      </div>
-                      <div className="inline-block h-6 w-6 rounded-full ring-2 ring-zinc-900 bg-emerald-600 text-[10px] font-bold text-center leading-6 text-black">
-                        BL
-                      </div>
-                    </div>
-                  </div>
+              {/* Telemetry HUD Badges Floating On Display */}
+              <div className="flex flex-wrap items-center justify-between gap-3 z-10">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0e0e0f]/85 backdrop-blur-md border border-[#d0bcff]/30 text-[#d0bcff]">
+                  <span className="w-2 h-2 rounded-full bg-[#d0bcff] animate-ping" />
+                  <span className="text-xs font-mono tracking-widest uppercase">
+                    FLAC / WAV / MP3 Direct Stream
+                  </span>
                 </div>
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0e0e0f]/85 backdrop-blur-md border border-white/10 text-[#cbc3d7]">
+                  <Radio className="w-3.5 h-3.5 text-[#d0bcff]" />
+                  <span className="text-xs font-mono tracking-wider uppercase">
+                    WebRTC Peer-to-Peer Sync
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0e0e0f]/85 backdrop-blur-md border border-[#d0bcff]/20 text-[#d0bcff]">
+                  <HardDrive className="w-3.5 h-3.5 text-[#d0bcff]" />
+                  <span className="text-xs font-mono tracking-wider uppercase">
+                    Air-Gapped Local Storage
+                  </span>
+                </div>
+              </div>
 
-                {/* Player Main Surface */}
-                <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                  {/* Left Column: Vinyl Art & Dynamic Visualizer */}
-                  <div className="lg:col-span-5 flex flex-col items-center">
-                    <div className="relative w-56 h-56 sm:w-64 sm:h-64 rounded-2xl p-3 bg-gradient-to-br from-white/10 to-transparent border border-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.6)]">
-                      <div className={`w-full h-full rounded-xl bg-gradient-to-tr ${currentTrack.gradient} flex flex-col items-center justify-center relative overflow-hidden`}>
-                        {/* Vinyl Center Hole Motif */}
-                        <motion.div
-                          animate={{ rotate: isPlaying ? 360 : 0 }}
-                          transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-                          className="w-28 h-28 rounded-full border-4 border-white/10 bg-black/60 flex items-center justify-center shadow-inner"
-                        >
-                          <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
-                            <Disc className="w-5 h-5 text-cyan-400" />
-                          </div>
-                        </motion.div>
-
-                        {/* Floating Sound Waves Overlay */}
-                        <div className="absolute bottom-3 left-3 right-3 flex items-end justify-center gap-1 h-10 bg-black/40 backdrop-blur-md rounded-lg p-1.5 border border-white/5">
-                          {[35, 75, 45, 90, 60, 30, 85, 95, 40, 70, 50, 80, 65, 40].map((h, i) => (
-                            <motion.span
-                              key={i}
-                              animate={
-                                isPlaying
-                                  ? {
-                                      height: [`${h * 0.3}%`, `${h}%`, `${h * 0.4}%`],
-                                    }
-                                  : { height: '15%' }
-                              }
-                              transition={{
-                                duration: 0.6 + (i % 5) * 0.15,
-                                repeat: Infinity,
-                                ease: 'easeInOut',
-                              }}
-                              className="w-1.5 bg-gradient-to-t from-cyan-500 to-violet-400 rounded-full"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Source pill */}
-                    <div className="mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-zinc-400 font-mono">
-                      <Database className="w-3 h-3 text-cyan-400" />
-                      <span>{currentTrack.source}</span>
-                    </div>
+              {/* Hero Mid Visual: Sound Art with Rotating Motif */}
+              <div className="my-auto py-8 flex flex-col sm:flex-row items-center justify-center gap-8 z-10">
+                <motion.div
+                  animate={{ rotate: isPlaying ? 360 : 0 }}
+                  transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+                  className="w-32 h-32 sm:w-40 sm:h-40 rounded-full border-2 border-[#d0bcff]/30 bg-gradient-to-tr from-violet-950 via-[#201f20] to-[#0e0e0f] flex items-center justify-center shadow-[0_0_30px_rgba(208,188,255,0.2)]"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#d0bcff]/20 border border-[#d0bcff]/40 flex items-center justify-center">
+                    <Disc className="w-6 h-6 text-[#d0bcff]" />
                   </div>
+                </motion.div>
 
-                  {/* Right Column: Track Telemetry & Controls */}
-                  <div className="lg:col-span-7 space-y-6">
-                    {/* Track Titles & Format */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                            STREAMING LIVE
-                          </span>
-                          <span className="text-xs text-zinc-500 font-mono">{currentTrack.format}</span>
-                        </div>
-                        <h3 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                          {currentTrack.title}
-                        </h3>
-                        <p className="text-zinc-400 text-sm font-medium">{currentTrack.artist}</p>
-                      </div>
-
-                      {/* Format Badge */}
-                      <div className="text-right hidden sm:block">
-                        <span className="text-xs font-mono text-zinc-400 block">{currentTrack.size}</span>
-                        <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 justify-end">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Zero Clock Drift
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Scrubber Progress Bar */}
-                    <div className="space-y-2">
-                      <div className="relative w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5 cursor-pointer">
-                        <motion.div
-                          className="h-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-violet-500 relative"
-                          style={{ width: `${progress}%` }}
-                        >
-                          <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_10px_#fff]" />
-                        </motion.div>
-                      </div>
-                      <div className="flex justify-between text-xs font-mono text-zinc-400">
-                        <span>01:28</span>
-                        <span className="text-cyan-400/80 font-mono">Byte Chunk: 1,048,576 - 2,097,151</span>
-                        <span>{currentTrack.duration}</span>
-                      </div>
-                    </div>
-
-                    {/* Master Transport Controls */}
-                    <div className="flex items-center justify-between pt-2">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => setIsPlaying(!isPlaying)}
-                          className="w-14 h-14 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-black flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,0.5)] transition-all transform active:scale-95"
-                          aria-label={isPlaying ? 'Pause' : 'Play'}
-                        >
-                          {isPlaying ? (
-                            <Pause className="w-6 h-6 fill-current" />
-                          ) : (
-                            <Play className="w-6 h-6 fill-current ml-0.5" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            setActiveTrackIndex((prev) => (prev + 1) % tracks.length)
-                          }
-                          className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-all text-xs font-mono flex items-center gap-2"
-                        >
-                          <span>Next Source</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* WebRTC Master Sync Status Indicator */}
-                      <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex flex-col text-right">
-                          <span className="text-[10px] font-mono text-zinc-500 uppercase">WebRTC Sync Delay</span>
-                          <span className="text-xs font-mono text-emerald-400 font-semibold">0.00 ms (Frame Lock)</span>
-                        </div>
-                        <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400">
-                          <Volume2 className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Interactive Source Selector Pills */}
-                    <div className="pt-4 border-t border-white/5 flex flex-wrap gap-2">
-                      {tracks.map((t, idx) => (
-                        <button
-                          key={t.title}
-                          onClick={() => {
-                            setActiveTrackIndex(idx);
-                            setProgress(15);
-                            setIsPlaying(true);
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 ${
-                            activeTrackIndex === idx
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
-                              : 'bg-white/5 text-zinc-400 border border-white/5 hover:border-white/20 hover:text-zinc-200'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {t.title.split(' ')[0]} ({t.source.split(' ')[0]})
-                        </button>
-                      ))}
-                    </div>
+                <div className="text-center sm:text-left">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-mono text-[#d0bcff] uppercase tracking-wider mb-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Riveria Reverie Acoustic Engine</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                    {currentTrack.title}
+                  </h2>
+                  <p className="text-sm text-[#cbc3d7] mt-1">{currentTrack.artist}</p>
+                  <div className="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#201f20] border border-white/10 text-xs font-mono text-[#d0bcff]">
+                      {currentTrack.format}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#201f20] border border-white/10 text-xs font-mono text-[#cbc3d7]">
+                      {currentTrack.source}
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
 
-      {/* The Arsenal (Feature Grid) */}
-      <section id="arsenal" className="py-24 border-t border-white/5 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Section Header */}
-          <div className="max-w-3xl mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-cyan-950/60 border border-cyan-500/30 text-cyan-400 text-xs font-mono mb-4">
-              <Zap className="w-3.5 h-3.5" />
-              THE ARSENAL
+              {/* Floating HUD Equalizer Bottom Anchor */}
+              <div className="p-4 md:p-6 rounded-xl bg-[#0e0e0f]/90 backdrop-blur-2xl border border-[#d0bcff]/20 flex flex-col md:flex-row items-center justify-between gap-4 z-10 shadow-2xl">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="w-12 h-12 rounded-full bg-gradient-to-r from-violet-600 to-[#a078ff] text-white flex items-center justify-center shadow-[0_0_20px_rgba(160,120,255,0.5)] hover:scale-105 transition-transform flex-shrink-0"
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-5 h-5 fill-current" />
+                    ) : (
+                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                    )}
+                  </button>
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm font-semibold text-white tracking-wide">
+                      {currentTrack.title}
+                    </span>
+                    <span className="text-xs text-[#d0bcff] font-mono tracking-wider">
+                      {currentTrack.mastering}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Waveform Visualizer Simulation */}
+                <div className="w-full md:w-72 flex items-end gap-1.5 h-8">
+                  {eqHeights.map((h, i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ height: isPlaying ? `${h}%` : '20%' }}
+                      transition={{ duration: 0.3 }}
+                      className="flex-1 bg-gradient-to-t from-[#d0bcff]/40 to-[#a078ff] rounded-full"
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
-            <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-4xl sm:text-5xl font-extrabold text-white tracking-tight">
-              Engineered for Audiophiles.
-              <br />
-              <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-transparent">
-                Synchronized without Compromise.
+          </div>
+        </section>
+
+        {/* 2. ARCHITECTURE METRICS STRIP */}
+        <section className="w-full bg-[#1c1b1c]/80 backdrop-blur-xl border-y border-white/5 py-12">
+          <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+              <div className="flex flex-col gap-1 items-start">
+                <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono font-medium">
+                  Cost &amp; Access
+                </span>
+                <span className="text-3xl lg:text-4xl text-[#d0bcff] font-bold">
+                  $0 Free
+                </span>
+                <p className="text-xs text-[#cbc3d7] leading-relaxed">
+                  100% free and open-source for personal listening. No paywalls, premium tiers, or commercial ad interruptions.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1 items-start">
+                <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono font-medium">
+                  Local Device Mount
+                </span>
+                <span className="text-3xl lg:text-4xl text-white font-bold">
+                  0 Uploads
+                </span>
+                <p className="text-xs text-[#cbc3d7] leading-relaxed">
+                  Mount gigabytes of local lossless audio directly in your browser using zero-copy in-memory Object URLs.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1 items-start">
+                <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono font-medium">
+                  Room Syncing
+                </span>
+                <span className="text-3xl lg:text-4xl text-white font-bold">
+                  WebRTC
+                </span>
+                <p className="text-xs text-[#cbc3d7] leading-relaxed">
+                  Direct peer-to-peer data channels keep playback state and playheads aligned without cloud relay lag.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1 items-start">
+                <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono font-medium">
+                  Streaming Engine
+                </span>
+                <span className="text-3xl lg:text-4xl text-[#a078ff] font-bold">
+                  RFC 9110
+                </span>
+                <p className="text-xs text-[#cbc3d7] leading-relaxed">
+                  Node.js HTTP Range requests with 206 Partial Content slicing for instant seeks and efficient buffer streaming.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. CORE PILLARS / BENTO GRID */}
+        <section
+          className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 py-24 w-full"
+          id="architecture"
+        >
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-4">
+            <div className="flex flex-col gap-1 max-w-xl">
+              <span className="text-xs uppercase tracking-[0.22em] text-[#d0bcff] font-medium font-mono">
+                Acoustic Architecture
               </span>
-            </h2>
-            <p className="mt-4 text-base sm:text-lg text-zinc-400 font-light">
-              Mainstream streaming platforms trap your library inside walled gardens and lossy codecs. Riveria replaces that paradigm with direct peer mesh protocols, air-gapped device mounts, and pure byte streams.
+              <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                Honest Engineering. Zero Silos.
+              </h2>
+            </div>
+            <p className="text-sm text-[#cbc3d7] max-w-md font-light leading-relaxed">
+              We built Riveria to solve everyday problems with modern music apps: locked-down local files, laggy group listening, and ad-saturated feeds.
             </p>
           </div>
 
-          {/* 3 Flagship Pillars */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Pillar 1: Zero-Latency Jams */}
-            <motion.div
-              whileHover={{ y: -6 }}
-              transition={{ duration: 0.3 }}
-              className="relative rounded-2xl bg-zinc-950/50 border border-white/10 hover:border-cyan-500/40 p-8 backdrop-blur-xl group shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-all"
+          {/* Bento Grid Container */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Card 1: Lossless Hybrid Vault (Spans 7) */}
+            <div
+              id="hybrid-hub"
+              className="md:col-span-7 rounded-2xl bg-[#201f20]/60 backdrop-blur-2xl border border-white/10 p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden group hover:border-[#d0bcff]/40 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
             >
-              <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-6 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all">
-                <Radio className="w-6 h-6" />
+              <div className="absolute -top-24 -right-24 w-80 h-80 bg-[#d0bcff]/10 rounded-full blur-3xl pointer-events-none group-hover:bg-[#d0bcff]/20 transition-all" />
+              <div className="flex flex-col gap-3 mb-8 z-10">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff] border border-[#d0bcff]/20">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <span className="text-xs uppercase tracking-[0.16em] text-[#d0bcff] font-mono">
+                  Air-Gapped Local Audio Mount
+                </span>
+                <h3 className="text-2xl font-bold text-white">
+                  The Lossless Hybrid Vault
+                </h3>
+                <p className="text-sm text-[#cbc3d7] font-light leading-relaxed max-w-lg">
+                  Never upload your unreleased tracks or gigabytes of FLAC files to third-party databases. Riveria mounts your device's audio files directly in the browser via zero-copy object URLs, seamlessly blending your air-gapped disks and cloud collection into one fluid queue.
+                </p>
               </div>
-              <span className="text-[11px] font-mono text-cyan-400 uppercase tracking-widest block mb-2">
-                P2P DATACHANNEL MESH
-              </span>
-              <h3 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl font-bold text-white mb-3">
-                Zero-Latency Jams
-              </h3>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-6">
-                When you hit pause, your friends stop at the exact same millisecond. Using direct WebRTC peer data channels, playback state and seek head coordinates travel over an encrypted peer mesh—bypassing cloud servers for instantaneous synchronization.
-              </p>
 
-              {/* Technical Spec Box */}
-              <div className="p-3.5 rounded-xl bg-black/60 border border-white/5 font-mono text-xs space-y-2">
-                <div className="flex justify-between text-zinc-400">
-                  <span>Signaling:</span>
-                  <span className="text-cyan-400">Socket.IO Rooms</span>
+              <div className="w-full bg-[#0e0e0f]/80 rounded-xl p-4 border border-white/5 z-10 flex flex-col gap-2 font-mono text-xs">
+                <div className="flex items-center justify-between text-[#cbc3d7] pb-1 border-b border-white/5">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#d0bcff] shadow-[0_0_8px_#d0bcff]" />
+                    Local Sync Hub: In-Memory Audio Mount
+                  </span>
+                  <span className="text-[#d0bcff] font-semibold">Active • 0 Bytes Sent</span>
                 </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Transport:</span>
-                  <span className="text-zinc-200">RTCDataChannel (UDP)</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Sync Delta:</span>
-                  <span className="text-emerald-400">&lt; 1.5ms drift</span>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Pillar 2: The Hybrid Hub */}
-            <motion.div
-              whileHover={{ y: -6 }}
-              transition={{ duration: 0.3 }}
-              className="relative rounded-2xl bg-zinc-950/50 border border-white/10 hover:border-violet-500/40 p-8 backdrop-blur-xl group shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-all"
-            >
-              <div className="w-12 h-12 rounded-xl bg-violet-950/70 border border-violet-500/30 flex items-center justify-center text-violet-400 mb-6 group-hover:shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all">
-                <HardDrive className="w-6 h-6" />
-              </div>
-              <span className="text-[11px] font-mono text-violet-400 uppercase tracking-widest block mb-2">
-                AIR-GAPPED LOCAL MOUNT
-              </span>
-              <h3 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl font-bold text-white mb-3">
-                The Hybrid Hub
-              </h3>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-6">
-                Never upload your multi-gigabyte lossless library to third-party databases. Riveria mounts audio files directly in the browser via zero-copy object URLs, seamlessly blending air-gapped local folders with your cloud database into one unified queue.
-              </p>
-
-              {/* Technical Spec Box */}
-              <div className="p-3.5 rounded-xl bg-black/60 border border-white/5 font-mono text-xs space-y-2">
-                <div className="flex justify-between text-zinc-400">
-                  <span>Storage:</span>
-                  <span className="text-violet-400">In-Memory Object URLs</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Data Ingestion:</span>
-                  <span className="text-zinc-200">0 bytes uploaded</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Catalog Fusion:</span>
-                  <span className="text-emerald-400">Instant Unified Queue</span>
+                <div className="flex items-center justify-between text-[#cbc3d7]">
+                  <span>Catalog Fusion: Local Object URLs + Cloud Catalog</span>
+                  <span className="text-[11px] text-[#fbabff] uppercase tracking-wider">
+                    Instant Playback
+                  </span>
                 </div>
               </div>
-            </motion.div>
-
-            {/* Pillar 3: Audiophile Fidelity */}
-            <motion.div
-              whileHover={{ y: -6 }}
-              transition={{ duration: 0.3 }}
-              className="relative rounded-2xl bg-zinc-950/50 border border-white/10 hover:border-cyan-500/40 p-8 backdrop-blur-xl group shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-all"
-            >
-              <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-6 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all">
-                <Waves className="w-6 h-6" />
-              </div>
-              <span className="text-[11px] font-mono text-cyan-400 uppercase tracking-widest block mb-2">
-                RFC 9110 BYTE-RANGE STREAMING
-              </span>
-              <h3 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl font-bold text-white mb-3">
-                Audiophile Fidelity
-              </h3>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-6">
-                No lossy transcoding artifacts or dynamic range compression. Our Node.js streaming core fulfills RFC 9110 HTTP Range requests with 206 Partial Content slicing, piping pristine audio buffers with zero playback stalls and instantaneous seeking.
-              </p>
-
-              {/* Technical Spec Box */}
-              <div className="p-3.5 rounded-xl bg-black/60 border border-white/5 font-mono text-xs space-y-2">
-                <div className="flex justify-between text-zinc-400">
-                  <span>Chunking:</span>
-                  <span className="text-cyan-400">HTTP 206 Partial Content</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Supported:</span>
-                  <span className="text-zinc-200">FLAC, WAV, OGG, WebM</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Sanitization:</span>
-                  <span className="text-emerald-400">Magic Byte Verified</span>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* The "Engine" Showcase (Visual Breakout) */}
-      <section id="engine" className="py-24 border-t border-white/5 relative bg-gradient-to-b from-transparent via-cyan-950/10 to-transparent">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-white/5 border border-white/10 text-cyan-300 text-xs font-mono mb-4">
-              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-              FULL-SPECTRUM ARCHITECTURE
             </div>
-            <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-4xl sm:text-5xl font-extrabold text-white tracking-tight">
-              The Engine in Action.
-            </h2>
-            <p className="mt-4 text-base sm:text-lg text-zinc-400 font-light">
-              Behind Riveria’s minimalist glass facade lies a multi-threaded reactive engine managing live Socket.IO notification cascades, strict cryptographic RBAC, and binary audio guards.
-            </p>
-          </div>
 
-          {/* Interactive Breakout Console */}
-          <div className="rounded-3xl bg-zinc-950/90 border border-white/10 shadow-[0_25px_80px_rgba(0,0,0,0.8)] backdrop-blur-2xl overflow-hidden">
-            {/* Console Tabs */}
-            <div className="border-b border-white/10 px-6 py-4 flex flex-wrap items-center justify-between gap-4 bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActiveTab('telemetry')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
-                    activeTab === 'telemetry'
-                      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                      : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Activity className="w-3.5 h-3.5" />
-                  Live Socket.IO Stream
-                </button>
-                <button
-                  onClick={() => setActiveTab('rbac')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
-                    activeTab === 'rbac'
-                      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                      : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Admin RBAC Controls
-                </button>
-                <button
-                  onClick={() => setActiveTab('signature')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
-                    activeTab === 'signature'
-                      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                      : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  Magic Byte Binary Guard
-                </button>
+            {/* Card 2: WebRTC Spatial Mesh (Spans 5) */}
+            <div className="md:col-span-5 rounded-2xl bg-[#201f20]/60 backdrop-blur-2xl border border-white/10 p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden group hover:border-[#d0bcff]/40 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+              <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-[#d0bcff]/10 rounded-full blur-3xl pointer-events-none group-hover:bg-[#d0bcff]/20 transition-all" />
+              <div className="flex flex-col gap-3 mb-6 z-10">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff] border border-[#d0bcff]/20">
+                  <Radio className="w-5 h-5" />
+                </div>
+                <span className="text-xs uppercase tracking-[0.16em] text-[#d0bcff] font-mono">
+                  Real-Time Collective Listening
+                </span>
+                <h3 className="text-2xl font-bold text-white">
+                  WebRTC Jam Mesh
+                </h3>
+                <p className="text-sm text-[#cbc3d7] font-light leading-relaxed">
+                  Join a lightweight jam room with a 6-character room code. When you play, pause, or seek, the playhead coordinates travel directly over an encrypted WebRTC data channel mesh so everyone stays in sync.
+                </p>
               </div>
 
-              {/* Notification Bell Simulator */}
-              <div className="flex items-center gap-3">
-                <div
-                  className={`relative p-2 rounded-lg border transition-all ${
-                    bellPulse
-                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]'
-                      : 'bg-white/5 border-white/10 text-zinc-400'
-                  }`}
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400" />
+              <div className="flex items-center justify-between z-10 pt-4 border-t border-white/5">
+                <div className="flex -space-x-2">
+                  <div className="w-8 h-8 rounded-full bg-violet-600 border-2 border-[#131314] flex items-center justify-center text-xs font-semibold text-white">
+                    P1
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-[#353436] border-2 border-[#131314] flex items-center justify-center text-xs font-semibold text-[#fbabff]">
+                    P2
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-[#a078ff] border-2 border-[#131314] flex items-center justify-center text-xs font-semibold text-white">
+                    P3
+                  </div>
                 </div>
-                <span className="text-xs font-mono text-zinc-400 hidden sm:inline">
-                  Real-Time Notification Pipeline
+                <span className="text-xs font-mono text-[#d0bcff] uppercase tracking-wider">
+                  Direct Peer DataChannels Open
                 </span>
               </div>
             </div>
 
-            {/* Console Screen */}
-            <div className="p-6 sm:p-8">
-              <AnimatePresence mode="wait">
-                {activeTab === 'telemetry' && (
-                  <motion.div
-                    key="telemetry"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-                  >
-                    <div className="lg:col-span-2 space-y-4 font-mono text-xs">
-                      <div className="p-4 rounded-xl bg-black/60 border border-white/5 space-y-2">
-                        <div className="flex items-center justify-between text-zinc-500 pb-2 border-b border-white/5">
-                          <span>SOCKET_EVENT_LOG</span>
-                          <span className="text-emerald-400">CHANNEL: authenticated</span>
-                        </div>
-                        <div className="text-cyan-400 flex items-start gap-2">
-                          <span className="text-zinc-600">07:11:02.418</span>
-                          <span>[track:created] "Solaris (Reverie Master)" broadcasted to 28 active listeners</span>
-                        </div>
-                        <div className="text-zinc-300 flex items-start gap-2">
-                          <span className="text-zinc-600">07:11:03.102</span>
-                          <span>[jam:signal] WebRTC offer-answer handshake negotiated via ICE trickle</span>
-                        </div>
-                        <div className="text-emerald-300 flex items-start gap-2">
-                          <span className="text-zinc-600">07:11:04.882</span>
-                          <span>[notification] Admin broadcast: "Lossless FLAC library synced to global cluster"</span>
-                        </div>
-                        <div className="text-violet-400 flex items-start gap-2">
-                          <span className="text-zinc-600">07:11:05.120</span>
-                          <span>[jam:sync] Playhead synchronized at sample position 4,819,200</span>
-                        </div>
-                      </div>
+            {/* Card 3: Node.js Byte-Stream Pipeline (Spans 5) */}
+            <div className="md:col-span-5 rounded-2xl bg-[#201f20]/60 backdrop-blur-2xl border border-white/10 p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden group hover:border-[#d0bcff]/40 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+              <div className="flex flex-col gap-3 mb-6 z-10">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff] border border-[#d0bcff]/20">
+                  <Waves className="w-5 h-5" />
+                </div>
+                <span className="text-xs uppercase tracking-[0.16em] text-[#d0bcff] font-mono">
+                  RFC 9110 Byte-Range Slicing
+                </span>
+                <h3 className="text-2xl font-bold text-white">
+                  Node Audio Pipeline
+                </h3>
+                <p className="text-sm text-[#cbc3d7] font-light leading-relaxed">
+                  Fast, responsive seeking backed by standard HTTP 206 Partial Content range requests. Audio files stream in clean byte chunks directly from the disk pipeline with genuine binary signature checks.
+                </p>
+              </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                          <span className="text-zinc-500 block text-[10px]">Active Room Sockets</span>
-                          <span className="text-cyan-400 text-lg font-bold">142 Connected</span>
-                        </div>
-                        <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                          <span className="text-zinc-500 block text-[10px]">Buffer Health</span>
-                          <span className="text-emerald-400 text-lg font-bold">100.0% Lossless</span>
-                        </div>
-                        <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5 col-span-2 sm:col-span-1">
-                          <span className="text-zinc-500 block text-[10px]">Average Stream Latency</span>
-                          <span className="text-cyan-400 text-lg font-bold">&lt; 3.8ms</span>
-                        </div>
-                      </div>
-                    </div>
+              <div className="w-full z-10 flex items-center justify-between p-3 rounded-lg bg-[#0e0e0f]/60 border border-white/5 font-mono text-xs">
+                <span className="text-[#cbc3d7]">Range: bytes=1048576-2097151</span>
+                <span className="text-[#d0bcff] font-semibold">206 Partial Content</span>
+              </div>
+            </div>
 
-                    <div className="p-5 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-['Plus_Jakarta_Sans',sans-serif] font-bold text-white text-base mb-2">
-                          Socket.IO Heartbeat
-                        </h4>
-                        <p className="text-xs text-zinc-400 leading-relaxed">
-                          Clients establish authenticated WebSockets using JWT handshake verification. Instant broadcasts ensure every album mutation, admin track drop, and room sync reflects across all screens without browser refreshes.
-                        </p>
-                      </div>
-                      <div className="mt-6 pt-4 border-t border-white/5">
-                        <span className="text-[10px] font-mono text-zinc-500 uppercase block mb-1">
-                          Cluster Node Location
-                        </span>
-                        <span className="text-xs font-mono text-zinc-200">
-                          us-east-1 // MongoDB Atlas Tier 1
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
+            {/* Card 4: Obsidian Canvas UI (Spans 7) */}
+            <div className="md:col-span-7 rounded-2xl bg-[#201f20]/60 backdrop-blur-2xl border border-white/10 p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden group hover:border-[#d0bcff]/40 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+              <div className="flex flex-col gap-3 mb-6 z-10">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff] border border-[#d0bcff]/20">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <span className="text-xs uppercase tracking-[0.16em] text-[#d0bcff] font-mono">
+                  Distraction-Free Experience
+                </span>
+                <h3 className="text-2xl font-bold text-white">
+                  Obsidian Canvas Interface
+                </h3>
+                <p className="text-sm text-[#cbc3d7] font-light leading-relaxed max-w-lg">
+                  Designed from the ground up for focused listening. Sleek obsidian dark mode with subtle lavender and ice blue accents, translucent glass panels, and zero sponsored banners or intrusive popups.
+                </p>
+              </div>
 
-                {activeTab === 'rbac' && (
-                  <motion.div
-                    key="rbac"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs"
-                  >
-                    <div className="lg:col-span-2 p-5 rounded-xl bg-black/60 border border-white/5 space-y-4">
-                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                        <span className="text-cyan-400 font-bold">ROLE_BASED_ACCESS_MATRIX</span>
-                        <span className="px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800/40 text-[10px]">
-                          STRICT ENFORCEMENT
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between p-2.5 rounded bg-white/[0.02] border border-white/5">
-                          <span className="text-zinc-300">Public User (`role: user`)</span>
-                          <span className="text-zinc-400">Stream tracks, join P2P Jams, mount local storage</span>
-                        </div>
-                        <div className="flex items-center justify-between p-2.5 rounded bg-cyan-950/30 border border-cyan-800/40">
-                          <span className="text-cyan-300 font-bold">Administrator (`role: admin`)</span>
-                          <span className="text-cyan-400">Upload multipart audio, edit cloud metadata, delete tracks</span>
-                        </div>
-                        <div className="flex items-center justify-between p-2.5 rounded bg-white/[0.02] border border-white/5">
-                          <span className="text-zinc-300">Registration Escalation Guard</span>
-                          <span className="text-emerald-400">Zod rejected on caller-supplied roles (422)</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-5 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-['Plus_Jakarta_Sans',sans-serif] font-bold text-white text-base mb-2 font-sans">
-                          Cryptographic Integrity
-                        </h4>
-                        <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-                          Admin privileges cannot be self-assigned. All mutations require strict JSON Web Tokens with verified issuer claims, safeguarding cloud library ownership.
-                        </p>
-                      </div>
-                      <div className="mt-6 pt-4 border-t border-white/5">
-                        <span className="text-[10px] font-mono text-zinc-500 uppercase block mb-1">
-                          Hashing Algorithm
-                        </span>
-                        <span className="text-xs font-mono text-zinc-200">
-                          bcrypt with 10 salt rounds + JWT Bearer
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {activeTab === 'signature' && (
-                  <motion.div
-                    key="signature"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs"
-                  >
-                    <div className="lg:col-span-2 p-5 rounded-xl bg-black/60 border border-white/5 space-y-4">
-                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                        <span className="text-cyan-400 font-bold">MAGIC_BYTE_INSPECTION_PIPELINE</span>
-                        <span className="text-emerald-400">SPOOF DETECTION ACTIVE</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between">
-                          <span className="text-zinc-400">FLAC Header</span>
-                          <span className="text-cyan-400">0x66 0x4C 0x61 0x43 ("fLaC")</span>
-                        </div>
-                        <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between">
-                          <span className="text-zinc-400">RIFF WAV Header</span>
-                          <span className="text-cyan-400">0x52 0x49 0x46 0x46 ... 0x57 0x41 0x56 0x45 ("WAVE")</span>
-                        </div>
-                        <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between">
-                          <span className="text-zinc-400">MPEG Layer 3 (MP3)</span>
-                          <span className="text-cyan-400">0x49 0x44 0x33 ("ID3") or sync byte 0xFF 0xFB</span>
-                        </div>
-                        <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between">
-                          <span className="text-zinc-400">OGG Vorbis / Opus</span>
-                          <span className="text-cyan-400">0x4F 0x67 0x67 0x53 ("OggS")</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-5 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-['Plus_Jakarta_Sans',sans-serif] font-bold text-white text-base mb-2 font-sans">
-                          Zero-Trust Audio Ingestion
-                        </h4>
-                        <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-                          Unlike primitive file extensions that can be spoofed by malware or corrupt payloads, Riveria inspects raw binary magic bytes at the file descriptor level before storage.
-                        </p>
-                      </div>
-                      <div className="mt-6 pt-4 border-t border-white/5">
-                        <span className="text-[10px] font-mono text-zinc-500 uppercase block mb-1">
-                          Validation Action
-                        </span>
-                        <span className="text-xs font-mono text-red-400">
-                          Automatic fs.unlink() on invalid signatures
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Inline SVG Acoustic Waveform */}
+              <div className="w-full h-20 rounded-lg bg-[#0e0e0f]/80 border border-white/5 p-4 flex items-center justify-center">
+                <svg
+                  className="w-full h-full text-[#d0bcff]"
+                  fill="none"
+                  preserveAspectRatio="none"
+                  viewBox="0 0 600 60"
+                >
+                  <path
+                    d="M0,30 Q30,5 60,30 T120,30 T180,10 T240,45 T300,15 T360,50 T420,20 T480,40 T540,25 T600,30"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M0,30 Q45,50 90,30 T180,30 T270,10 T360,40 T450,20 T540,35 T600,30"
+                    fill="none"
+                    opacity="0.6"
+                    stroke="#fbabff"
+                    strokeDasharray="4 4"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* The Reverie Philosophy Breakout */}
-      <section id="philosophy" className="py-28 relative overflow-hidden">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="p-8 sm:p-14 rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
-          >
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-950/60 border border-cyan-500/30 text-cyan-400 mb-6 shadow-[0_0_25px_rgba(6,182,212,0.3)]">
-              <Headphones className="w-7 h-7" />
-            </div>
-
-            <p className="text-xs font-mono tracking-widest text-cyan-400 uppercase mb-3">
-              THE PHILOSOPHY
-            </p>
-
-            <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
-              "Reverie: <span className="font-serif italic font-normal text-cyan-300">A state of being pleasantly lost in one's daydream.</span>"
-            </h2>
-
-            <p className="mt-6 text-base sm:text-lg text-zinc-300 font-light leading-relaxed max-w-3xl mx-auto">
-              Mainstream streaming transformed music into endless algorithmic dopamine loops—cluttered spreadsheets of thumbnail art, invasive ads, and heavily compressed audio bitrates.
-            </p>
-
-            <p className="mt-4 text-base sm:text-lg text-zinc-400 font-light leading-relaxed max-w-3xl mx-auto">
-              Riveria was founded as a digital sanctuary. An unhurried, dark-mode listening room where you can mount your rarest lossless records, listen in flawless sub-millisecond sync with people you love, and disappear inside the sound.
-            </p>
-
-            <div className="mt-10 flex items-center justify-center gap-6 text-sm font-mono text-zinc-500">
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                No Ad Injections
+        {/* 4. INTERACTIVE PLAYER PREVIEW SHOWCASE */}
+        <section
+          className="w-full py-24 bg-[#0e0e0f] relative border-y border-white/5"
+          id="experience"
+        >
+          <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16">
+            <div className="text-center max-w-3xl mx-auto mb-16 flex flex-col gap-2 items-center">
+              <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono font-medium">
+                Interactive Telemetry Deck
               </span>
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                No Bitrate Downgrades
-              </span>
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                No Cloud Lock-in
-              </span>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Comparison Matrix: Riveria vs Old Industry */}
-      <section id="comparison" className="py-24 border-t border-white/5 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Engineered Beyond Legacy Services.
-            </h2>
-            <p className="mt-3 text-zinc-400 text-sm sm:text-base font-light">
-              See how Riveria's hybrid architecture fundamentally diverges from mainstream audio players.
-            </p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-zinc-400 font-mono">
-                  <th className="py-4 px-4 font-normal">CAPABILITY</th>
-                  <th className="py-4 px-4 font-bold text-cyan-400 bg-cyan-950/20 rounded-t-xl">RIVERIA ENGINE</th>
-                  <th className="py-4 px-4 font-normal">SPOTIFY</th>
-                  <th className="py-4 px-4 font-normal">YOUTUBE MUSIC</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 font-mono">
-                <tr>
-                  <td className="py-4 px-4 text-zinc-200 font-sans font-medium">Listening Room Sync</td>
-                  <td className="py-4 px-4 text-cyan-300 font-bold bg-cyan-950/10">Sub-ms WebRTC Mesh (Zero Drift)</td>
-                  <td className="py-4 px-4 text-zinc-400">Server relay (1-3s jitter)</td>
-                  <td className="py-4 px-4 text-zinc-400">Third-party add-ons required</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-4 text-zinc-200 font-sans font-medium">Local Unreleased Files</td>
-                  <td className="py-4 px-4 text-cyan-300 font-bold bg-cyan-950/10">Air-Gapped Zero-Copy Object URLs</td>
-                  <td className="py-4 px-4 text-zinc-400">Fragile local network sync</td>
-                  <td className="py-4 px-4 text-zinc-400">Must upload whole library</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-4 text-zinc-200 font-sans font-medium">Streaming Protocol</td>
-                  <td className="py-4 px-4 text-cyan-300 font-bold bg-cyan-950/10">RFC 9110 Byte-Range Slicing</td>
-                  <td className="py-4 px-4 text-zinc-400">Proprietary OGG chunks</td>
-                  <td className="py-4 px-4 text-zinc-400">Opus/AAC adaptive streams</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-4 text-zinc-200 font-sans font-medium">Interface Density</td>
-                  <td className="py-4 px-4 text-cyan-300 font-bold bg-cyan-950/10">Audiophile Glassmorphic Cockpit</td>
-                  <td className="py-4 px-4 text-zinc-400">Cluttered commercial grid</td>
-                  <td className="py-4 px-4 text-zinc-400">Video player spreadsheet</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-4 text-zinc-200 font-sans font-medium">Data Sovereignty</td>
-                  <td className="py-4 px-4 text-cyan-300 font-bold bg-cyan-950/10">100% Self-Hostable / Docker Ready</td>
-                  <td className="py-4 px-4 text-zinc-400">Closed ecosystem</td>
-                  <td className="py-4 px-4 text-zinc-400">Closed ecosystem</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* Final High-Conversion CTA */}
-      <section className="py-24 relative overflow-hidden border-t border-white/5">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="relative rounded-3xl p-10 sm:p-16 bg-gradient-to-br from-cyan-950/50 via-zinc-950/90 to-violet-950/40 border border-cyan-500/40 shadow-[0_0_80px_rgba(6,182,212,0.25)] backdrop-blur-2xl">
-            <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-4xl sm:text-5xl font-extrabold text-white tracking-tight">
-              Step Beyond the Algorithmic Grid.
-              <br />
-              <span className="bg-gradient-to-r from-cyan-300 to-cyan-400 bg-clip-text text-transparent">
-                Enter Riveria.
-              </span>
-            </h2>
-            <p className="mt-4 text-base sm:text-lg text-zinc-300 font-light max-w-2xl mx-auto">
-              Initialize the engine, invite your inner circle, and experience listening as it was intended. Pure sound, zero latency, absolute sovereignty.
-            </p>
-
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                to={destination}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-bold text-black bg-cyan-400 hover:bg-cyan-300 shadow-[0_0_35px_rgba(6,182,212,0.6)] hover:shadow-[0_0_50px_rgba(6,182,212,0.9)] transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0"
-              >
-                <span>{token ? 'Enter Studio Now' : 'Initialize Engine Free'}</span>
-                <ArrowRight className="w-5 h-5 text-black" />
-              </Link>
-            </div>
-
-            <p className="mt-6 text-xs font-mono text-zinc-500">
-              No credit card required • Instant browser execution • Open-source engine
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Minimal Audiophile Footer */}
-      <footer className="border-t border-white/5 bg-[#070707] py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center">
-              <Disc className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div>
-              <span className="font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm text-white">
-                RIVERIA MUSIC ENGINE
-              </span>
-              <p className="text-[11px] text-zinc-500">
-                Built for Audiophiles, Daydreamers & Pure Sound.
+              <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                The Obsidian Player Architecture
+              </h2>
+              <p className="text-sm text-[#cbc3d7] font-light max-w-xl">
+                Experience Riveria's playback controls and real-time spectrum visualizer directly in your browser.
               </p>
             </div>
+
+            {/* Player Deck Mockup */}
+            <div className="max-w-4xl mx-auto rounded-3xl bg-[#201f20]/70 backdrop-blur-3xl border border-[#d0bcff]/20 p-6 md:p-10 shadow-[0_25px_70px_rgba(0,0,0,0.8)] flex flex-col gap-8">
+              {/* Top Status Bar of Player */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-6">
+                <div className="flex items-center gap-3">
+                  <span className="w-3 h-3 rounded-full bg-[#d0bcff] shadow-[0_0_10px_#d0bcff]" />
+                  <span className="text-xs tracking-widest text-[#d0bcff] uppercase font-mono">
+                    Stream Active • Monitored
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[#d0bcff] px-2.5 py-1 rounded bg-[#353436]/40 border border-[#d0bcff]/20">
+                    {currentTrack.format}
+                  </span>
+                  <span className="font-mono text-xs text-[#cbc3d7]">BUF: 0.12s</span>
+                </div>
+              </div>
+
+              {/* Center Track & Dynamic Visualizer Display */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+                {/* Album/Track Emblem & Metadata */}
+                <div className="md:col-span-5 flex flex-col gap-4">
+                  <div className="w-48 h-48 mx-auto md:mx-0 rounded-2xl bg-[#2a2a2b] relative overflow-hidden border border-[#d0bcff]/20 group shadow-2xl flex items-center justify-center">
+                    <div className="w-full h-full bg-gradient-to-tr from-violet-950 via-[#201f20] to-[#0e0e0f] flex items-center justify-center">
+                      <Disc className="w-16 h-16 text-[#d0bcff]/80" />
+                    </div>
+                    <div className="absolute bottom-3 left-3 text-xs font-mono text-[#d0bcff] tracking-wider">
+                      CHAMBER 01
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">
+                      {currentTrack.title}
+                    </h3>
+                    <p className="text-sm text-[#d0bcff] font-medium">
+                      {currentTrack.artist}
+                    </p>
+                    <p className="text-xs text-[#cbc3d7] uppercase tracking-widest mt-1 font-mono">
+                      {currentTrack.mastering}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Live Parametric Equalizer Spectrum Simulation */}
+                <div className="md:col-span-7 flex flex-col gap-6">
+                  <div className="flex justify-between items-center text-xs font-mono text-[#cbc3d7]">
+                    <span>20 Hz</span>
+                    <span>1 kHz</span>
+                    <span>8 kHz</span>
+                    <span>48 kHz</span>
+                  </div>
+
+                  {/* Dynamic Equalizer Bar Grid */}
+                  <div className="h-32 w-full flex items-end gap-1.5 p-3 bg-[#0e0e0f] rounded-xl border border-white/5">
+                    {eqHeights.map((h, i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ height: isPlaying ? `${h}%` : '20%' }}
+                        transition={{ duration: 0.3 }}
+                        className="flex-1 bg-gradient-to-t from-[#a078ff]/30 to-[#d0bcff] rounded-t"
+                      />
+                    ))}
+                  </div>
+
+                  {/* Scrubber Track */}
+                  <div className="flex flex-col gap-2">
+                    <div
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const newPct = Math.min(100, Math.max(0, (clickX / rect.width) * 100));
+                        setProgress(newPct);
+                      }}
+                      className="w-full bg-[#2a2a2b] h-1.5 rounded-full overflow-hidden cursor-pointer relative group"
+                    >
+                      <div
+                        className="bg-gradient-to-r from-violet-600 to-[#a078ff] h-full relative"
+                        style={{ width: `${progress}%` }}
+                      >
+                        <span className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_8px_#d0bcff] scale-0 group-hover:scale-100 transition-transform" />
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs font-mono text-[#cbc3d7]">
+                      <span>02:14</span>
+                      <span className="text-[#d0bcff]">{currentTrack.duration}</span>
+                    </div>
+                  </div>
+
+                  {/* Transport Control Bar */}
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() =>
+                          setActiveTrackIndex((prev) => (prev + 1) % demoTracks.length)
+                        }
+                        className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors"
+                        title="Shuffle source"
+                      >
+                        <Shuffle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setActiveTrackIndex((prev) =>
+                            prev === 0 ? demoTracks.length - 1 : prev - 1
+                          )
+                        }
+                        className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors"
+                        title="Previous"
+                      >
+                        <SkipBack className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        className="w-12 h-12 rounded-full bg-gradient-to-r from-violet-600 to-[#a078ff] text-white flex items-center justify-center hover:scale-105 transition-transform shadow-[0_0_20px_rgba(160,120,255,0.45)]"
+                        title={isPlaying ? 'Pause' : 'Play'}
+                      >
+                        {isPlaying ? (
+                          <Pause className="w-6 h-6 fill-current" />
+                        ) : (
+                          <Play className="w-6 h-6 fill-current ml-0.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setActiveTrackIndex((prev) => (prev + 1) % demoTracks.length)
+                        }
+                        className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors"
+                        title="Next"
+                      >
+                        <SkipForward className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setProgress(0)}
+                        className="text-[#cbc3d7] hover:text-[#d0bcff] transition-colors"
+                        title="Repeat"
+                      >
+                        <Repeat className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Gain Level Slider Mockup */}
+                    <div className="flex items-center gap-3">
+                      <Volume2 className="w-5 h-5 text-[#d0bcff]" />
+                      <input
+                        className="w-24 accent-[#d0bcff] h-1 rounded-full cursor-pointer bg-[#353436]"
+                        max="100"
+                        min="0"
+                        type="range"
+                        value={volume}
+                        onChange={(e) => setVolume(Number(e.target.value))}
+                      />
+                      <span className="font-mono text-xs text-[#d0bcff]">
+                        {volume}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 5. GENUINE PERSPECTIVES / WHAT RIVERIA SOLVES */}
+        <section className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 py-24 w-full">
+          <div className="flex flex-col items-center text-center mb-16">
+            <span className="text-xs uppercase tracking-[0.22em] text-[#d0bcff] font-mono mb-2">
+              The Reverie Vision
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              A Personal Sanctuary for Your Sound
+            </h2>
+            <p className="text-sm text-[#cbc3d7] max-w-xl mt-3 font-light">
+              We aren't trying to displace multi-billion dollar giants. We built Riveria because we wanted a clean, honest player that values ownership and real-time community.
+            </p>
           </div>
 
-          <div className="flex items-center gap-6 text-xs text-zinc-400">
-            <span className="font-mono text-zinc-600">RFC 9110 • WebRTC • Socket.IO • Docker</span>
-            <a
-              href="https://github.com/Parth-Chavan-15/Riveria"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 hover:text-cyan-400 transition-colors"
-            >
-              <span>GitHub</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="p-6 rounded-2xl bg-[#201f20]/40 backdrop-blur-xl border border-white/5 flex flex-col justify-between hover:border-[#d0bcff]/30 transition-all duration-300">
+              <div className="flex flex-col gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff]">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-semibold text-white">
+                  Local Files Belong to You
+                </h3>
+                <p className="text-xs text-[#cbc3d7] font-light leading-relaxed">
+                  "Most streaming apps make playing local files feel like an afterthought or force you to upload everything to their servers. Riveria mounts my lossless FLAC folders instantly without uploading a single byte."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-4 border-t border-white/5 text-xs text-[#d0bcff] font-mono">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Zero-Upload Local Sync</span>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[#201f20]/40 backdrop-blur-xl border border-white/5 flex flex-col justify-between hover:border-[#d0bcff]/30 transition-all duration-300">
+              <div className="flex flex-col gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff]">
+                  <Radio className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-semibold text-white">
+                  Shared Jams Without Lag
+                </h3>
+                <p className="text-xs text-[#cbc3d7] font-light leading-relaxed">
+                  "Listening together across Discord or third-party bots always came with jitter and crushed bitrates. WebRTC peer data channels keep our playback state locked without relay lag."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-4 border-t border-white/5 text-xs text-[#d0bcff] font-mono">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Sub-frame WebRTC Jams</span>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[#201f20]/40 backdrop-blur-xl border border-white/5 flex flex-col justify-between hover:border-[#d0bcff]/30 transition-all duration-300">
+              <div className="flex flex-col gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-[#2a2a2b] flex items-center justify-center text-[#d0bcff]">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-semibold text-white">
+                  No Ads, No Algorithm Clutter
+                </h3>
+                <p className="text-xs text-[#cbc3d7] font-light leading-relaxed">
+                  "Mainstream platforms feel like spreadsheets of sponsored album art. Riveria returns to the meaning of reverie: a quiet, beautiful space to get lost in music you actually care about."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-4 border-t border-white/5 text-xs text-[#d0bcff] font-mono">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Open Source Sanctuary</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 6. CONVERSION / OPEN SOURCE VAULT */}
+        <section
+          id="open-source"
+          className="w-full relative py-24 bg-gradient-to-b from-[#0e0e0f] via-[#1c1b1c] to-[#0e0e0f] border-t border-white/5"
+        >
+          <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 flex flex-col items-center">
+            <div className="w-full max-w-3xl rounded-3xl bg-[#201f20]/60 backdrop-blur-3xl border border-[#d0bcff]/30 p-8 md:p-14 text-center relative overflow-hidden shadow-[0_30px_90px_rgba(0,0,0,0.7)]">
+              <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#a078ff]/20 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2a2a2b]/80 border border-[#d0bcff]/30 text-[#d0bcff] mb-6 font-mono text-xs uppercase tracking-widest">
+                <Lock className="w-3.5 h-3.5" />
+                <span>100% Free Forever • Sovereign Acoustic Web</span>
+              </div>
+
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                Free For Everyone. Forever.
+              </h2>
+              <p className="text-sm text-[#cbc3d7] max-w-xl mx-auto font-light mb-8 leading-relaxed">
+                Music is meant to be enjoyed, shared, and collected without paywalls or invasive tracking. Launch Riveria in your browser or inspect the entire stack on GitHub.
+              </p>
+
+              {/* 4 Pillars Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10 max-w-2xl mx-auto">
+                <div className="p-3 rounded-xl bg-[#0e0e0f]/80 border border-white/5 flex flex-col items-center text-center gap-1">
+                  <Sparkles className="w-5 h-5 text-[#d0bcff]" />
+                  <span className="text-xs text-white font-semibold uppercase tracking-wider font-mono">
+                    Always Free
+                  </span>
+                  <span className="text-[11px] text-[#cbc3d7]">No subscription fees</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e0e0f]/80 border border-white/5 flex flex-col items-center text-center gap-1">
+                  <ShieldCheck className="w-5 h-5 text-[#d0bcff]" />
+                  <span className="text-xs text-white font-semibold uppercase tracking-wider font-mono">
+                    Zero Ads
+                  </span>
+                  <span className="text-[11px] text-[#cbc3d7]">No interruptions</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e0e0f]/80 border border-white/5 flex flex-col items-center text-center gap-1">
+                  <Terminal className="w-5 h-5 text-[#d0bcff]" />
+                  <span className="text-xs text-white font-semibold uppercase tracking-wider font-mono">
+                    Open Source
+                  </span>
+                  <span className="text-[11px] text-[#cbc3d7]">Audit on GitHub</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e0e0f]/80 border border-white/5 flex flex-col items-center text-center gap-1">
+                  <HardDrive className="w-5 h-5 text-[#d0bcff]" />
+                  <span className="text-xs text-white font-semibold uppercase tracking-wider font-mono">
+                    Local First
+                  </span>
+                  <span className="text-[11px] text-[#cbc3d7]">Your disk, your data</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-lg mx-auto mb-8">
+                <Link
+                  to={destination}
+                  className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs font-semibold uppercase tracking-wider hover:brightness-110 transition-all shadow-[0_0_24px_rgba(160,120,255,0.4)]"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{token ? 'Enter Studio Studio' : 'Launch In Browser (Free)'}</span>
+                </Link>
+                <a
+                  href="https://github.com/Parth-Chavan-15/Riveria"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-[#0e0e0f]/90 border border-[#d0bcff]/30 text-[#e5e2e3] text-xs uppercase tracking-wider hover:border-[#d0bcff] hover:text-[#d0bcff] transition-all duration-300"
+                >
+                  <Terminal className="w-4 h-4 text-[#d0bcff]" />
+                  <span>GitHub Repository</span>
+                </a>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-[#cbc3d7] font-mono">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#d0bcff]" /> Node.js Range Stream
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#d0bcff]" /> WebRTC DataChannel Mesh
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#d0bcff]" /> In-Memory Object URLs
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full bg-[#0e0e0f] py-16 border-t border-white/5">
+        <div className="w-full max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 flex flex-col gap-10">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+            <div className="md:col-span-4 flex flex-col gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#d0bcff] to-[#8fcdff] flex items-center justify-center">
+                  <Disc className="w-4 h-4 text-black" />
+                </div>
+                <span className="text-lg font-bold tracking-widest text-[#d0bcff] uppercase">
+                  Riveria
+                </span>
+              </div>
+              <p className="text-xs text-[#cbc3d7] max-w-sm leading-relaxed">
+                A hybrid music library and real-time playback prototype built for personal listening and synchronized jam rooms.
+              </p>
+            </div>
+
+            <div className="md:col-span-5 flex flex-col gap-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-[#d0bcff] font-mono font-medium">
+                Technical Specifications
+              </span>
+              <div className="flex flex-col gap-2 text-xs font-mono">
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-[#cbc3d7]">Streaming Protocol</span>
+                  <span className="text-[#d0bcff]">RFC 9110 HTTP Range (206)</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-[#cbc3d7]">Jam Signaling</span>
+                  <span className="text-[#d0bcff]">WebRTC DataChannel + Socket.IO</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-[#cbc3d7]">Local Storage Mount</span>
+                  <span className="text-[#d0bcff]">Zero-Copy In-Memory Object URLs</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 flex flex-col gap-2 md:items-end">
+              <span className="text-xs uppercase tracking-[0.18em] text-[#d0bcff] font-mono font-medium">
+                Repository
+              </span>
+              <div className="flex items-center gap-4">
+                <a
+                  href="https://github.com/Parth-Chavan-15/Riveria"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[#cbc3d7] hover:text-[#d0bcff] transition-colors flex items-center gap-1.5 font-mono"
+                >
+                  <span>Parth-Chavan-15/Riveria</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#cbc3d7]">
+            <p>© 2026 Riveria Music Engine. Built with open-source love for music enthusiasts.</p>
+            <div className="flex items-center gap-6 font-mono text-[11px]">
+              <span className="text-[#d0bcff]">Docker Ready</span>
+              <span>•</span>
+              <span className="text-[#d0bcff]">Vite 8 + React 19</span>
+              <span>•</span>
+              <span className="text-[#d0bcff]">Tailwind CSS 4</span>
+            </div>
           </div>
         </div>
       </footer>

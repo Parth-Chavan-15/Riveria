@@ -326,7 +326,7 @@ export default function LandingPage() {
             Where sound dissolves into memory.{' '}
             <br className="hidden sm:inline" />
             <span className="font-serif italic text-[#d0bcff] font-normal">
-              An intimate acoustic haven for the daydreamer.
+              An audiophile sanctuary for unhurried thought.
             </span>
           </motion.h1>
 
@@ -424,7 +424,7 @@ export default function LandingPage() {
                     Shared Resonance
                   </h3>
                   <p className="text-xs sm:text-sm text-zinc-400 font-light leading-relaxed">
-                    Listening with a friend separated by oceans should feel as intimate as sitting on the same living room carpet. With direct WebRTC data channels, when you pause, their track pauses in exact synchrony—free from cloud relay delays.
+                    Listening with a friend across oceans should feel as natural as sitting side by side in the same room. With direct WebRTC peer data channels, when you pause or scrub, their player responds at the exact same millisecond—free from cloud relay delays.
                   </p>
                 </div>
                 <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-[#d0bcff]">
@@ -464,7 +464,7 @@ export default function LandingPage() {
                 Step inside the listening chamber.
               </h2>
               <p className="mt-3 text-sm text-zinc-400 font-light">
-                An intimate demonstration of Riveria's fluid playback deck, ambient wave visualizer, and multi-source playback.
+                A live, responsive console showcasing Riveria's fluid audio deck, ambient wave visualizer, and instant multi-source streaming.
               </p>
             </div>
 
@@ -744,7 +744,7 @@ export default function LandingPage() {
                 Lose yourself in the daydream.
               </h2>
               <p className="mt-6 text-sm sm:text-base text-zinc-300 font-light max-w-xl mx-auto leading-relaxed">
-                There are no algorithmic feeds to scroll, no commercial interruptions to endure, and no walls separating your files from your queue. Just you, your sound, and the quiet space between thoughts.
+                There are no algorithmic feeds to scroll, no commercial interruptions to endure, and no barriers between your files and your queue. Just you, your music, and the quiet clarity of reverie.
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">

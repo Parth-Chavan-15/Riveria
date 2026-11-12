@@ -1,0 +1,42 @@
+name: Vercel Auto-Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-to-vercel:
+    name: Deploy to Vercel Production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Trigger via Vercel Deploy Hook
+        if: env.VERCEL_DEPLOY_HOOK != ''
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Vercel production build via Deploy Hook..."
+          response=$(curl -s -w "\n%{http_code}" -X POST "$VERCEL_DEPLOY_HOOK")
+          http_code=$(echo "$response" | tail -n1)
+          echo "Vercel Deploy Hook response HTTP code: $http_code"
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "Successfully dispatched deployment to Vercel!"
+          else
+            echo "Deploy hook returned non-2xx status: $http_code"
+            echo "$response"
+            exit 1
+          fi
+
+      - name: Deploy via Vercel CLI Token
+        if: env.VERCEL_DEPLOY_HOOK == '' && env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          echo "Deploying via Vercel CLI..."
+          npx --yes vercel --prod --token="${{ secrets.VERCEL_TOKEN }}" --yes

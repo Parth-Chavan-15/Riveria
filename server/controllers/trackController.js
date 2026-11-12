@@ -154,6 +154,10 @@ exports.streamAudio = async (req, res, next) => {
           start = Number(match[1]);
           if (match[2]) {
             end = Math.min(Number(match[2]), fileSize - 1);
+          } else {
+            // Cap open-ended range request (e.g. bytes=0-) to a 512 KB chunk for instant start
+            const CHUNK_SIZE = 512 * 1024;
+            end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
           }
         }
 
@@ -211,6 +215,10 @@ exports.streamAudio = async (req, res, next) => {
         start = Number(match[1]);
         if (match[2]) {
           end = Math.min(Number(match[2]), stat.size - 1);
+        } else {
+          // Cap open-ended range request to a 512 KB chunk for instant start
+          const CHUNK_SIZE = 512 * 1024;
+          end = Math.min(start + CHUNK_SIZE - 1, stat.size - 1);
         }
       }
 

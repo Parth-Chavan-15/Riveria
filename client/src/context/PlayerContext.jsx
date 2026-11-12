@@ -21,11 +21,16 @@ export function PlayerProvider({ children }) {
 
   useEffect(() => {
     const audio = audioRef.current;
+    audio.preload = 'auto';
     const onTime = () => setPosition(audio.currentTime || 0);
     const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    const onError = () => setError('This audio source could not be played by your browser.');
+    const onError = () => {
+      if (audio.src && audio.error && audio.error.code !== 0) {
+        setError('This audio track could not be loaded.');
+      }
+    };
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
@@ -53,6 +58,7 @@ export function PlayerProvider({ children }) {
     setError('');
     if (currentTrack?._id !== track._id) {
       audio.src = source;
+      audio.preload = 'auto';
       audio.load();
       setCurrentTrack(track);
       setPosition(0);

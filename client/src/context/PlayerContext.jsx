@@ -23,9 +23,14 @@ export function PlayerProvider({ children }) {
     currentTrackRef.current = currentTrack;
   }, [currentTrack]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState('');
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
   const [localTracks, setLocalTracks] = useState([]);
   const localTracksRef = useRef([]);
 
@@ -47,11 +52,25 @@ export function PlayerProvider({ children }) {
   const roomVersionsRef = useRef(new Map());
   const scheduledTimerRef = useRef(null);
   const rateNudgeTimerRef = useRef(null);
+  const lastRateNudgeTimeRef = useRef(0);
   const clockSkewRef = useRef(0);
   const clockSamplesRef = useRef([]);
   const lastTrackChangeTimeRef = useRef(0);
   const trackLoadingRef = useRef(null);
   const seekDebounceTimerRef = useRef(null);
+
+  const calibrateClock = useCallback((skew) => {
+    if (typeof skew !== 'number' || !Number.isFinite(skew)) return;
+    clockSamplesRef.current.push(skew);
+    if (clockSamplesRef.current.length > 10) {
+      clockSamplesRef.current.shift();
+    }
+    const sorted = [...clockSamplesRef.current].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    clockSkewRef.current = clockSkewRef.current === 0
+      ? median
+      : clockSkewRef.current * 0.7 + median * 0.3;
+  }, []);
 
   const resetRoomVersion = useCallback((roomId) => {
     if (roomId) {
@@ -97,12 +116,14 @@ export function PlayerProvider({ children }) {
 
     const handleOnline = () => {
       setError('');
-      if (audioRef.current && currentTrackRef.current && audioRef.current.paused) {
+      if (audioRef.current && currentTrackRef.current && audioRef.current.paused && isPlayingRef.current) {
         const resumePos = audioRef.current.currentTime || 0;
         audioRef.current.src = sourceFor(currentTrackRef.current);
         audioRef.current.load();
         audioRef.current.currentTime = resumePos;
-        audioRef.current.play().catch(() => {});
+        audioRef.current.play().then(() => {
+          setIsAutoplayBlocked(false);
+        }).catch(() => {});
       }
     };
 
@@ -118,9 +139,24 @@ export function PlayerProvider({ children }) {
       }
     };
 
+    // Mobile Web Autoplay Unlock: satisfy mobile browser gesture policies on user touch
+    const unlockAudio = () => {
+      const a = audioRef.current;
+      if (a) {
+        audioCoordinator.claimExclusivePlayback(a, 'player-context');
+        if (a.paused && isPlayingRef.current) {
+          a.play().then(() => {
+            setIsAutoplayBlocked(false);
+          }).catch(() => {});
+        }
+      }
+    };
+
     window.addEventListener('reveria:all-audio-stopped', handleStopAll);
     window.addEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('click', unlockAudio, { passive: true });
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
@@ -129,6 +165,8 @@ export function PlayerProvider({ children }) {
 
     return () => {
       audioCoordinator.unregister(audio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
       window.removeEventListener('reveria:all-audio-stopped', handleStopAll);
       window.removeEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
       window.removeEventListener('online', handleOnline);
@@ -191,6 +229,20 @@ export function PlayerProvider({ children }) {
     setError('');
     lastTrackChangeTimeRef.current = Date.now();
 
+    // Broadcast track change immediately so peers start buffering simultaneously
+    if (!fromSync) {
+      window.dispatchEvent(
+        new CustomEvent('reveria:jam-action', {
+          detail: {
+            action: 'track_change',
+            track,
+            isPlaying: autoPlay,
+            position: 0
+          }
+        })
+      );
+    }
+
     const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
     const nextId = track._id || track.id;
     const isDifferent = currentId !== nextId;
@@ -212,27 +264,17 @@ export function PlayerProvider({ children }) {
         audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
         setIsPlaying(true);
+        setIsAutoplayBlocked(false);
       } catch (err) {
-        if (err.name !== 'AbortError') {
+        if (err.name === 'NotAllowedError') {
+          setIsAutoplayBlocked(true);
+        } else if (err.name !== 'AbortError') {
           setError('Playback was blocked. Tap play again to allow audio.');
         }
       }
     } else {
       audio.pause();
       setIsPlaying(false);
-    }
-
-    if (!fromSync) {
-      window.dispatchEvent(
-        new CustomEvent('reveria:jam-action', {
-          detail: {
-            action: 'track_change',
-            track,
-            isPlaying: autoPlay,
-            position: 0
-          }
-        })
-      );
     }
   }, [currentTrack, isMuted, volume]);
 
@@ -246,8 +288,12 @@ export function PlayerProvider({ children }) {
         audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
         setIsPlaying(true);
+        setIsAutoplayBlocked(false);
+        setError('');
       } catch (err) {
-        if (err.name !== 'AbortError') {
+        if (err.name === 'NotAllowedError') {
+          setIsAutoplayBlocked(true);
+        } else if (err.name !== 'AbortError') {
           setError('Playback was blocked by the browser.');
         }
       }
@@ -436,21 +482,18 @@ export function PlayerProvider({ children }) {
 
     const clientNow = Date.now();
 
-    // 1. Clock Calibration (Cristian's algorithm with low-jitter filtering from Rust engine)
-    const pingServerTime = currentServerTime || recordedServerTime;
-    if (pingServerTime && typeof pingServerTime === 'number') {
-      const instantaneousSkew = pingServerTime - clientNow;
-      // Add sample
+    // 1. Clock Calibration (only against true server timestamps, never against peer timestamps)
+    if (currentServerTime && typeof currentServerTime === 'number') {
+      const instantaneousSkew = currentServerTime - clientNow;
       clockSamplesRef.current.push(instantaneousSkew);
-      if (clockSamplesRef.current.length > 20) {
+      if (clockSamplesRef.current.length > 10) {
         clockSamplesRef.current.shift();
       }
-      // Sort and take middle/lowest jitter cluster
       const sorted = [...clockSamplesRef.current].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
       clockSkewRef.current = clockSkewRef.current === 0
         ? median
-        : clockSkewRef.current * 0.75 + median * 0.25;
+        : clockSkewRef.current * 0.7 + median * 0.3;
     }
 
     const roomKey = (roomId || 'default').toLowerCase();
@@ -502,29 +545,36 @@ export function PlayerProvider({ children }) {
       await playTrack(track, allTracks, false /* do not autoplay yet; schedule synchronously */, true /* fromSync */);
 
       // Scheduled Start Time Alignment (Acoustic Phase-Lock)
-      const targetTime = Number(scheduledStartTime) || (nowServerEst + 100);
+      const targetTime = Number(scheduledStartTime) || (nowServerEst + 40);
       const delayMs = targetTime - nowServerEst;
 
       if (isTargetPlaying) {
-        if (delayMs > 5 && delayMs < 1200) {
-          // Schedule both devices to fire play() on the exact same millisecond!
+        if (delayMs > 5 && delayMs < 100) {
+          // Tight lookahead alignment (5-100ms) for simultaneous start
           scheduledTimerRef.current = setTimeout(() => {
             try {
               audioCoordinator.claimExclusivePlayback(audio, 'player-context');
               audio.currentTime = targetPos;
               setPosition(targetPos);
-              audio.play().catch(() => {});
+              audio.play().then(() => {
+                setIsAutoplayBlocked(false);
+              }).catch((err) => {
+                if (err.name === 'NotAllowedError') setIsAutoplayBlocked(true);
+              });
               setIsPlaying(true);
             } catch {}
           }, delayMs);
         } else {
-          // Play immediately with elapsed offset
+          // Play immediately without delay
           try {
             audioCoordinator.claimExclusivePlayback(audio, 'player-context');
-            const catchupPos = targetPos + (delayMs < 0 ? Math.abs(delayMs) / 1000 : 0);
-            audio.currentTime = catchupPos;
-            setPosition(catchupPos);
-            await audio.play();
+            audio.currentTime = targetPos;
+            setPosition(targetPos);
+            audio.play().then(() => {
+              setIsAutoplayBlocked(false);
+            }).catch((err) => {
+              if (err.name === 'NotAllowedError') setIsAutoplayBlocked(true);
+            });
             setIsPlaying(true);
           } catch {}
         }
@@ -559,15 +609,19 @@ export function PlayerProvider({ children }) {
     } else {
       // Play command from room
       if (audio.paused) {
-        const targetTime = Number(scheduledStartTime) || (nowServerEst + 80);
+        const targetTime = Number(scheduledStartTime) || (nowServerEst + 40);
         const delayMs = targetTime - nowServerEst;
-        if (delayMs > 5 && delayMs < 1200) {
+        if (delayMs > 5 && delayMs < 100) {
           scheduledTimerRef.current = setTimeout(() => {
             try {
               audioCoordinator.claimExclusivePlayback(audio, 'player-context');
               audio.currentTime = targetPos;
               setPosition(targetPos);
-              audio.play().catch(() => {});
+              audio.play().then(() => {
+                setIsAutoplayBlocked(false);
+              }).catch((err) => {
+                if (err.name === 'NotAllowedError') setIsAutoplayBlocked(true);
+              });
               setIsPlaying(true);
             } catch {}
           }, delayMs);
@@ -576,33 +630,40 @@ export function PlayerProvider({ children }) {
             audioCoordinator.claimExclusivePlayback(audio, 'player-context');
             audio.currentTime = targetPos;
             setPosition(targetPos);
-            await audio.play();
+            audio.play().then(() => {
+              setIsAutoplayBlocked(false);
+            }).catch((err) => {
+              if (err.name === 'NotAllowedError') setIsAutoplayBlocked(true);
+            });
             setIsPlaying(true);
           } catch {}
         }
       } else {
         // Continuous Phase-Locked Loop (PLL) Single-Speaker Engine:
-        // Continuously runs on every heartbeat and poll to guarantee <5ms single-speaker lock without stuttering!
         const drift = targetPos - audio.currentTime;
         const isExplicitSeek = action === 'seek';
 
-        if (isExplicitSeek || Math.abs(drift) > 2.5) {
-          // Hard snap ONLY on explicit seek or extreme unrecoverable network lag (>2.5s)
+        if (isExplicitSeek || Math.abs(drift) > 0.8) {
+          // Hard snap ONLY on explicit seek or significant drift (>800ms)
           audio.currentTime = targetPos;
           setPosition(targetPos);
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
           audio.playbackRate = 1.0;
-        } else if (Math.abs(drift) > 0.005) {
-          // High-precision acoustic phase micro-nudge (5ms - 2500ms):
-          // Inaudible rate adjustment gently pulls devices into exact phase alignment without looping or stream aborts!
-          if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
-          const rateAdjustment = Math.max(-0.04, Math.min(0.04, drift * 0.15));
-          audio.playbackRate = 1.0 + rateAdjustment;
-          rateNudgeTimerRef.current = setTimeout(() => {
-            if (audioRef.current) audioRef.current.playbackRate = 1.0;
-          }, 600);
+        } else if (Math.abs(drift) > 0.040) {
+          // Smooth deadband: if drift is <= 40ms, do NOT touch playbackRate!
+          // If drift is between 40ms and 800ms, apply a gentle micro-nudge throttled to once every 2s
+          const now = Date.now();
+          if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 2000)) {
+            lastRateNudgeTimeRef.current = now;
+            if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+            const rateAdjustment = Math.max(-0.015, Math.min(0.015, drift * 0.05));
+            audio.playbackRate = 1.0 + rateAdjustment;
+            rateNudgeTimerRef.current = setTimeout(() => {
+              if (audioRef.current) audioRef.current.playbackRate = 1.0;
+            }, 800);
+          }
         } else {
-          // Locked within 5ms Single-Speaker Haas threshold
+          // Locked within 40ms Haas precedence threshold
           if (audio.playbackRate !== 1.0) {
             audio.playbackRate = 1.0;
           }
@@ -637,6 +698,8 @@ export function PlayerProvider({ children }) {
     removeLocalTrack,
     syncPlayback,
     resetRoomVersion,
+    calibrateClock,
+    isAutoplayBlocked,
     clockSkew: clockSkewRef.current
   }), [
     currentTrack,
@@ -644,6 +707,7 @@ export function PlayerProvider({ children }) {
     position,
     duration,
     error,
+    isAutoplayBlocked,
     localTracks,
     queue,
     setQueue,
@@ -663,7 +727,8 @@ export function PlayerProvider({ children }) {
     mountLocalFiles,
     removeLocalTrack,
     syncPlayback,
-    resetRoomVersion
+    resetRoomVersion,
+    calibrateClock
   ]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

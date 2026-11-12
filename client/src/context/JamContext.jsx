@@ -61,8 +61,10 @@ export function JamProvider({ children }) {
   const activeIncomingTransferRef = useRef(null);
   const joinedRoomRef = useRef('');
   const isIncomingSyncRef = useRef(false);
-  const lastProcessedTimestampRef = useRef(0);
+  const lastProcessedVersionRef = useRef(0);
   const lastPolledVersionRef = useRef(0);
+  const lastServerVersionRef = useRef(0);
+  const peerSequencesRef = useRef(new Map());
   const localSeqRef = useRef(0);
 
   // Persistent room state restored across route navigation and browser tabs
@@ -120,13 +122,24 @@ export function JamProvider({ children }) {
     if (!payload?.trackId && !payload?.track) return;
     if (payload.fromPeerId && payload.fromPeerId === myPeerIdRef.current) return;
 
-    // Reject stale / out-of-order packets that arrive after a newer state was already processed
-    const packetTime = Number(payload.serverTime || payload.timestamp) || 0;
-    if (packetTime && lastProcessedTimestampRef.current && packetTime < lastProcessedTimestampRef.current - 500) {
-      return;
-    }
-    if (packetTime > lastProcessedTimestampRef.current) {
-      lastProcessedTimestampRef.current = packetTime;
+    // Filter packets by source channel to prevent sequence/version domain collision
+    if (payload.fromPeerId) {
+      // Peer WebRTC DataChannel packet
+      const peerSeq = Number(payload.seq) || 0;
+      if (peerSeq) {
+        const lastSeq = peerSequencesRef.current.get(payload.fromPeerId) || 0;
+        if (peerSeq <= lastSeq) return; // Drop duplicate/stale packet from this specific peer
+        peerSequencesRef.current.set(payload.fromPeerId, peerSeq);
+      }
+    } else if (payload.version) {
+      // Server REST Poll state
+      const srvVer = Number(payload.version) || 0;
+      if (srvVer && lastServerVersionRef.current && srvVer <= lastServerVersionRef.current) {
+        return; // Already processed this or newer server state
+      }
+      if (srvVer > lastServerVersionRef.current) {
+        lastServerVersionRef.current = srvVer;
+      }
     }
 
     isIncomingSyncRef.current = true;
@@ -247,8 +260,8 @@ export function JamProvider({ children }) {
         addLog('OPEN', `Direct WebRTC DataChannel established with ${peerId}.`);
 
         // Send our current collaborative playlist to new peer
-        if (collabPlaylist.length > 0) {
-          channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylist }));
+        if (collabPlaylistRef.current.length > 0) {
+          channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylistRef.current }));
         }
       };
 
@@ -293,11 +306,11 @@ export function JamProvider({ children }) {
                 imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950'
               };
               addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Playing in real time.`);
-              player.playTrack(p2pTrack);
+              playerRef.current?.playTrack?.(p2pTrack);
               activeIncomingTransferRef.current = null;
             }
           } else if (packet.type === 'REQUEST_PLAY_TRACK') {
-            const match = player.localTracks.find((t) => t._id === packet.trackId);
+            const match = playerRef.current?.localTracks?.find((t) => t._id === packet.trackId);
             if (match) {
               streamLocalTrackToPeers(match);
             }
@@ -335,14 +348,14 @@ export function JamProvider({ children }) {
           if (connection.connectionState === 'disconnected') {
             closePeer(peerId);
           }
-        }, 3000);
+        }, 5000);
       }
     };
 
     peersRef.current.set(peerId, peer);
     updatePeersState();
     return peer;
-  }, [closePeer, dispatchSignal, handlePlaybackSync, handlePlaylistSync, collabPlaylist, addLog, updatePeersState, player, streamLocalTrackToPeers]);
+  }, [closePeer, dispatchSignal, handlePlaybackSync, handlePlaylistSync, addLog, updatePeersState, streamLocalTrackToPeers]);
 
   // Handle incoming WebRTC signal (offer/answer/candidate)
   const processSignal = useCallback(async (fromId, signal) => {
@@ -433,16 +446,13 @@ export function JamProvider({ children }) {
       } catch {}
     } else {
       signalingModeRef.current = 'rest';
-      setTimeout(() => {
-        addLog('NET', 'Activated ultra-resilient HTTP REST signaling.');
-      }, 0);
+      addLog('NET', 'Activated ultra-resilient HTTP REST signaling.');
     }
 
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
-  }, [createPeer, closePeer, processSignal, handlePlaybackSync, handlePlaylistSync, addLog]);
+  }, []);
 
   // REST Signaling polling loop when in serverless mode
   useEffect(() => {
@@ -457,8 +467,18 @@ export function JamProvider({ children }) {
         const curRoom = joinedRoomRef.current || joinedRoom;
         if (!curRoom) return;
 
+        const reqStart = Date.now();
         const data = await apiRequest(`/session/poll?roomId=${curRoom}&peerId=${myPeerIdRef.current}`);
         if (!data?.ok) return;
+
+        // Accurate Cristian's clock skew calibration against central server
+        if (typeof data.serverTime === 'number') {
+          const reqEnd = Date.now();
+          const rtt = Math.max(0, reqEnd - reqStart);
+          const estServerNow = data.serverTime + (rtt / 2);
+          const skew = estServerNow - reqEnd;
+          playerRef.current?.calibrateClock?.(skew);
+        }
 
         // 1. Process any waiting signals
         if (Array.isArray(data.signals) && data.signals.length > 0) {
@@ -519,7 +539,7 @@ export function JamProvider({ children }) {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
-  }, [joinedRoom, createPeer, dispatchSignal, processSignal, handlePlaybackSync, addLog]);
+  }, [joinedRoom, createPeer, dispatchSignal, processSignal, handlePlaybackSync, handlePlaylistSync, addLog]);
 
   // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab!
   useEffect(() => {
@@ -660,7 +680,7 @@ export function JamProvider({ children }) {
 
       playerRef.current?.resetRoomVersion?.(roomToLeave);
       lastPolledVersionRef.current = 0;
-      lastProcessedTimestampRef.current = 0;
+      lastProcessedVersionRef.current = 0;
       peersRef.current.forEach((_, id) => closePeer(id));
       setJoinedRoom('');
       setPeersList([]);
@@ -679,7 +699,7 @@ export function JamProvider({ children }) {
 
       const targetId = detail.track._id || detail.track.id;
       const serverTimeEst = Date.now() + (playerRef.current?.clockSkew || 0);
-      const scheduledStartTime = serverTimeEst + 150; // Single-Speaker 150ms lookahead for synchronized audio start
+      const scheduledStartTime = serverTimeEst + 40; // Tight 40ms lookahead for instant synchronized start
 
       const actionPayload = {
         type: 'PLAYBACK_SYNC',

@@ -26,7 +26,8 @@ export default function BottomPlayer() {
     setVolume,
     isMuted,
     toggleMute,
-    error
+    error,
+    isAutoplayBlocked
   } = usePlayer();
 
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -43,6 +44,15 @@ export default function BottomPlayer() {
       aria-label="Audio Playback Console"
       className="fixed bottom-3 left-3 right-3 md:bottom-4 md:left-6 md:right-6 h-22 md:h-24 glass-panel rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex items-center justify-between px-4 md:px-8 z-50 border border-white/10 backdrop-blur-2xl bg-[#09090c]/90 transition-all duration-300"
     >
+      {isAutoplayBlocked && (
+        <button
+          onClick={togglePlay}
+          className="absolute -top-10 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-xs shadow-[0_0_20px_rgba(245,158,11,0.6)] flex items-center gap-1.5 animate-bounce z-50 cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-sm">volume_up</span>
+          <span>Tap to Join Live Audio (Browser Muted)</span>
+        </button>
+      )}
       {/* 1. LEFT SECTION: Track Metadata & Artwork */}
       <div className="flex items-center gap-3 md:gap-4 w-1/4 min-w-[140px] max-w-[280px]">
         <div

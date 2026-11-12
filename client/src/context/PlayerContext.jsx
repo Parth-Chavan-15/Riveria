@@ -18,6 +18,10 @@ function sourceFor(track) {
 export function PlayerProvider({ children }) {
   const audioRef = useRef(new Audio());
   const [currentTrack, setCurrentTrack] = useState(null);
+  const currentTrackRef = useRef(null);
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -70,7 +74,32 @@ export function PlayerProvider({ children }) {
     const onPause = () => setIsPlaying(false);
     const onError = () => {
       if (audio.src && audio.error && audio.error.code !== 0) {
+        // Auto-heal network dropouts (code 2 = MEDIA_ERR_NETWORK) during mobile network handover
+        if (audio.error.code === 2) {
+          setTimeout(() => {
+            if (audioRef.current && currentTrackRef.current) {
+              const resumePos = audioRef.current.currentTime || 0;
+              setError('');
+              audioRef.current.src = sourceFor(currentTrackRef.current);
+              audioRef.current.load();
+              audioRef.current.currentTime = resumePos;
+              audioRef.current.play().catch(() => {});
+            }
+          }, 1200);
+          return;
+        }
         setError('This audio track could not be loaded.');
+      }
+    };
+
+    const handleOnline = () => {
+      setError('');
+      if (audioRef.current && currentTrackRef.current && audioRef.current.paused) {
+        const resumePos = audioRef.current.currentTime || 0;
+        audioRef.current.src = sourceFor(currentTrackRef.current);
+        audioRef.current.load();
+        audioRef.current.currentTime = resumePos;
+        audioRef.current.play().catch(() => {});
       }
     };
 
@@ -88,6 +117,7 @@ export function PlayerProvider({ children }) {
 
     window.addEventListener('reveria:all-audio-stopped', handleStopAll);
     window.addEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
+    window.addEventListener('online', handleOnline);
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
@@ -98,6 +128,7 @@ export function PlayerProvider({ children }) {
       audioCoordinator.unregister(audio);
       window.removeEventListener('reveria:all-audio-stopped', handleStopAll);
       window.removeEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
+      window.removeEventListener('online', handleOnline);
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('play', onPlay);

@@ -18,16 +18,44 @@
       }
     },
     {
-      "source": "/(assets/.*|covers/.*|audio/.*|favicon.ico|index.html)",
+      "source": "/session",
       "destination": {
-        "service": "client"
+        "service": "client",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/sync",
+      "destination": {
+        "service": "client",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/settings",
+      "destination": {
+        "service": "client",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/auth",
+      "destination": {
+        "service": "client",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/landing",
+      "destination": {
+        "service": "client",
+        "path": "/index.html"
       }
     },
     {
       "source": "/(.*)",
       "destination": {
-        "service": "client",
-        "path": "/index.html"
+        "service": "client"
       }
     }
   ]

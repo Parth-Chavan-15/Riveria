@@ -537,6 +537,9 @@ export function JamProvider({ children }) {
       try {
         sessionStorage.setItem('reveria:active_jam_room', targetCode);
         localStorage.setItem('reveria:active_jam_room', targetCode);
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState({}, '', `${window.location.pathname}?room=${targetCode}`);
+        }
       } catch {}
 
       if (result.playlist) setCollabPlaylist(result.playlist);
@@ -567,7 +570,9 @@ export function JamProvider({ children }) {
       }
       return true;
     } catch (err) {
-      setStatus('Unable to connect to jam room. Verify connection.');
+      if (!joinedRoomRef.current) {
+        setStatus('Unable to connect to jam room. Verify connection.');
+      }
       addLog('ERR', `Room connection error: ${err.message}`);
       return false;
     }

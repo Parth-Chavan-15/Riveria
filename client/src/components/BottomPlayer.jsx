@@ -8,8 +8,16 @@ function BottomPlayer() {
   return (
     <footer className="hidden md:flex fixed bottom-4 left-4 right-4 h-24 glass-panel rounded-xl shadow-2xl items-center justify-between px-8 z-50">
       <div className="flex items-center gap-4 w-1/3">
-        <div className={`w-14 h-14 rounded-lg overflow-hidden border border-glass-border ${currentTrack.imageColor}`}>
-           {currentTrack.imageSrc && <img src={currentTrack.imageSrc} alt="" className="w-full h-full object-cover" />}
+        <div className={`w-14 h-14 rounded-lg overflow-hidden border border-glass-border ${currentTrack.imageColor || 'bg-gradient-to-br from-purple-600 to-indigo-900'} relative flex items-center justify-center flex-shrink-0`}>
+           {currentTrack.imageSrc ? (
+             <img
+               src={currentTrack.imageSrc}
+               alt={currentTrack.title}
+               className="w-full h-full object-cover"
+               onError={(e) => { e.currentTarget.style.display = 'none'; }}
+             />
+           ) : null}
+           <span className="material-symbols-outlined text-xl text-white/30 absolute">music_note</span>
         </div>
         <div>
           <div className="text-white font-bold">{currentTrack.title}</div>

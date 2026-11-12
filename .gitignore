@@ -4,5 +4,17 @@
 node_modules/
 dist/
 coverage/
-server/uploads/
+server/uploads/*
+!server/uploads/.gitkeep
+client/public/audio/*
+!client/public/audio/.gitkeep
 atlas-credentials.env
+
+# Media & Copyrighted audio files
+*.mp3
+*.mp4
+*.wav
+*.ogg
+*.flac
+*.m4a
+*.aac

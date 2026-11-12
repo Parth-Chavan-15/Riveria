@@ -238,7 +238,7 @@ export default function WebRTCSession() {
   };
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pb-32 pt-24 md:ml-64 md:px-8 md:pt-28 text-white">
+    <main className="flex-1 overflow-y-auto px-4 pb-32 pt-24 md:ml-80 md:px-8 md:pt-28 text-white">
       <div className="mx-auto max-w-6xl space-y-6">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">WebRTC Data Mesh & Signaling</p>

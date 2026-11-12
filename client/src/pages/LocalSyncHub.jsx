@@ -11,7 +11,7 @@ export default function LocalSyncHub() {
     const count = mountLocalFiles(files);
     setMessage(count ? `${count} local track${count === 1 ? '' : 's'} mounted and ready to play.` : 'Select MP3, WAV, OGG, AAC, M4A, or WebM audio files.');
   };
-  return <main className="flex-1 md:ml-64 p-5 pb-32 pt-24 md:p-10 md:pt-28 text-white">
+  return <main className="flex-1 md:ml-80 p-5 pb-32 pt-24 md:p-10 md:pt-28 text-white">
     <section className="glass-panel mx-auto max-w-4xl rounded-2xl p-6 md:p-10">
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Private device library</p>
       <h2 className="mt-2 text-3xl font-bold">Local Sync Hub</h2>

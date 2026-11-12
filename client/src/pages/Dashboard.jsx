@@ -175,7 +175,7 @@ export default function Dashboard() {
   );
 
   return (
-    <main className="flex-1 overflow-y-auto px-5 pb-32 pt-24 md:ml-64 md:px-10 md:pt-28">
+    <main className="flex-1 overflow-y-auto px-5 pb-32 pt-24 md:ml-80 md:px-10 md:pt-28">
       <section>
         {/* Top Header & Actions */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

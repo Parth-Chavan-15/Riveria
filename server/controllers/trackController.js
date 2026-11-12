@@ -90,8 +90,25 @@ exports.uploadAudio = async (req, res, next) => {
 exports.streamAudio = async (req, res, next) => {
   try {
     const track = await Track.findById(req.params.id).lean();
-    if (!track?.audioFile?.filename) return res.status(404).json({ error: { code: 'AUDIO_NOT_FOUND', message: 'No uploaded audio is available for this track' } });
-    const filePath = path.join(uploadsDirectory, path.basename(track.audioFile.filename));
+    if (!track?.audioFile?.filename && !track?.audioSrc) {
+      return res.status(404).json({ error: { code: 'AUDIO_NOT_FOUND', message: 'No uploaded audio is available for this track' } });
+    }
+    const filename = path.basename(track.audioFile?.filename || '');
+    let filePath = filename ? path.join(uploadsDirectory, filename) : null;
+    if (filePath && !fs.existsSync(filePath)) {
+      const publicAudioPath = path.resolve(__dirname, '../../client/public/audio', filename);
+      if (fs.existsSync(publicAudioPath)) {
+        filePath = publicAudioPath;
+      } else {
+        filePath = null;
+      }
+    }
+    if (!filePath || !fs.existsSync(filePath)) {
+      if (track.audioSrc) {
+        return res.redirect(track.audioSrc);
+      }
+      return res.status(404).json({ error: { code: 'AUDIO_NOT_FOUND', message: 'Audio file is unavailable' } });
+    }
     const stat = await fs.promises.stat(filePath);
     const contentType = track.audioFile.mimeType || 'audio/mpeg';
     const range = req.headers.range;

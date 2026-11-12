@@ -30,11 +30,15 @@ function TrackCard({ trackData, onDelete }) {
       
       {/* Conditionally render the image. If missing, the imageColor gradient background shows natively! */}
       <div className={`aspect-square w-full rounded-lg ${imageColor || 'bg-gradient-to-br from-purple-600 to-indigo-900'} mb-4 relative overflow-hidden shadow-inner flex items-center justify-center`}>
+        <span className="material-symbols-outlined text-4xl text-white/20 absolute">music_note</span>
         {imageSrc ? (
-          <img src={imageSrc} alt={title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-        ) : (
-           <span className="material-symbols-outlined text-4xl text-white/20">music_note</span>
-        )}
+          <img
+            src={imageSrc}
+            alt={title}
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : null}
 
         {/* Admin Delete Action */}
         {isAdmin && isServerTrack && (

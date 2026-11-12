@@ -18,7 +18,7 @@ const upload = multer({
     filename: (_, file, callback) => callback(null, `${Date.now()}-${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`)
   }),
   limits: { fileSize: env.MAX_UPLOAD_SIZE_BYTES, files: 1 },
-  fileFilter: (_, file, callback) => callback(null, /^audio\/(mpeg|wav|ogg|aac|mp4|webm)$/.test(file.mimetype))
+  fileFilter: (_, file, callback) => callback(null, /^(audio\/(mpeg|wav|ogg|aac|mp4|webm)|video\/mp4)$/i.test(file.mimetype))
 });
 
 router.get('/', trackController.getAllTracks);

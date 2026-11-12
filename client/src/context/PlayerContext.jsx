@@ -3,8 +3,9 @@ import { apiUrl } from '../services/api';
 import { PlayerContext } from './playerContextDef';
 
 function sourceFor(track) {
-  if (track.localUrl || track.audioSrc) return track.localUrl || track.audioSrc;
+  if (track.localUrl) return track.localUrl;
   if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+  if (track.audioSrc) return track.audioSrc;
   return '';
 }
 

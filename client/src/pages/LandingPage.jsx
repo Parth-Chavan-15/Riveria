@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -21,51 +21,188 @@ import {
   Music,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest, apiUrl } from '../services/api';
 
 export default function LandingPage() {
   const { token } = useAuth();
   const destination = token ? '/' : '/auth';
 
-  // Interactive Player Experience State
-  const [isPlaying, setIsPlaying] = useState(true);
+  // Dynamic Cloud Audio & Playback State
+  const [cloudTracks, setCloudTracks] = useState([]);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
-  const [progress, setProgress] = useState(38);
-  const [volume, setVolume] = useState(78);
+  const [progress, setProgress] = useState(0);
+  const [volume, setVolume] = useState(80);
+  const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
+  const [totalDurationFormatted, setTotalDurationFormatted] = useState('00:00');
+  const audioRef = useRef(null);
   const [waveAmplitudes, setWaveAmplitudes] = useState([
     24, 42, 68, 55, 88, 70, 95, 82, 60, 75, 48, 30, 65, 80, 52, 34,
   ]);
 
-  const soundscapes = [
-    {
-      title: 'Prelude in Ethereal Violet',
-      movement: 'Movement I — The Awakening Mind',
-      origin: 'Riveria Chamber Archives',
-      atmosphere: 'Warm strings, solitary piano, room resonance',
-      sourceType: 'Cloud Stream • RFC 9110 Byte Slices',
-      duration: '05:42',
-      gradient: 'from-[#201735] via-[#161226] to-[#0e0e0f]',
-    },
-    {
-      title: 'The Architecture of Rain',
-      movement: 'Movement II — Nocturne for Quiet Hours',
-      origin: 'Mounted from Local Disk (/Archive/Tape_04)',
-      atmosphere: 'Analogue tape hiss, gentle marimba, soft rain',
-      sourceType: 'Air-Gapped Local Mount • In-Memory Object URL',
-      duration: '04:18',
-      gradient: 'from-[#172238] via-[#101726] to-[#0e0e0f]',
-    },
-    {
-      title: 'A Synchronous Twilight',
-      movement: 'Movement III — Shared Distance',
-      origin: 'Live WebRTC Room (#8842)',
-      atmosphere: 'Ambient synths, modular pulses, shared clock',
-      sourceType: 'WebRTC P2P Mesh • Shared Playhead',
-      duration: '06:05',
-      gradient: 'from-[#2a1738] via-[#1b1226] to-[#0e0e0f]',
-    },
-  ];
+  // Fetch real cloud tracks dynamically from database
+  useEffect(() => {
+    let active = true;
+    apiRequest('/tracks')
+      .then((data) => {
+        if (!active) return;
+        const tracksList = Array.isArray(data) ? data : [];
+        const playable = tracksList.filter((t) => t.audioFile?.filename || t.audioSrc);
+        setCloudTracks(playable.length > 0 ? playable : tracksList);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const activePiece = soundscapes[currentTrackIndex];
+  // Active track object
+  const activePiece = cloudTracks[currentTrackIndex] || {
+    title: 'Connecting to Cloud Library...',
+    artist: 'Riveria Cloud Network',
+    duration: '03:20',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-[#201735] via-[#161226] to-[#0e0e0f]',
+  };
+
+  const getAudioUrl = (track) => {
+    if (!track) return '';
+    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+    if (track.audioSrc) return track.audioSrc;
+    return '';
+  };
+
+  // Synchronize audio volume
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume / 100;
+    }
+  }, [volume]);
+
+  // Synchronize audio element lifecycle
+  useEffect(() => {
+    const audio = new Audio();
+    audioRef.current = audio;
+    audio.volume = 0.8;
+
+    const onTime = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setProgress((audio.currentTime / audio.duration) * 100);
+        const curMins = Math.floor(audio.currentTime / 60);
+        const curSecs = Math.floor(audio.currentTime % 60);
+        setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
+        const durMins = Math.floor(audio.duration / 60);
+        const durSecs = Math.floor(audio.duration % 60);
+        setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
+      }
+    };
+
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTrackIndex((prev) => (prev + 1) % (cloudTracks.length || 1));
+    };
+
+    audio.addEventListener('timeupdate', onTime);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, [cloudTracks]);
+
+  // Handle Play/Pause
+  const handleTogglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const streamUrl = getAudioUrl(activePiece);
+    if (!streamUrl) return;
+
+    if (isPlaying && !audio.paused) {
+      audio.pause();
+    } else {
+      if (audio.src !== streamUrl) {
+        audio.src = streamUrl;
+        audio.load();
+      }
+      try {
+        await audio.play();
+      } catch (err) {
+        console.warn('Audio play request interrupted:', err);
+      }
+    }
+  };
+
+  // Handle Scrubber Seeking
+  const handleSeek = (e) => {
+    const audio = audioRef.current;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const pct = Math.min(100, Math.max(0, (clickX / rect.width) * 100));
+    setProgress(pct);
+    if (audio && audio.duration && isFinite(audio.duration)) {
+      audio.currentTime = (pct / 100) * audio.duration;
+    }
+  };
+
+  // Handle Volume Change
+  const handleVolumeChange = (newVol) => {
+    setVolume(newVol);
+    if (audioRef.current) {
+      audioRef.current.volume = newVol / 100;
+    }
+  };
+
+  // Switch Track
+  const handleSelectTrack = (idx) => {
+    setCurrentTrackIndex(idx);
+    const selected = cloudTracks[idx];
+    if (audioRef.current && selected) {
+      const url = getAudioUrl(selected);
+      if (url) {
+        audioRef.current.src = url;
+        audioRef.current.load();
+        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+    }
+  };
+
+  const handlePrevTrack = () => {
+    if (cloudTracks.length === 0) return;
+    const newIdx = currentTrackIndex === 0 ? cloudTracks.length - 1 : currentTrackIndex - 1;
+    handleSelectTrack(newIdx);
+  };
+
+  const handleNextTrack = () => {
+    if (cloudTracks.length === 0) return;
+    const newIdx = (currentTrackIndex + 1) % cloudTracks.length;
+    handleSelectTrack(newIdx);
+  };
+
+  const handleRestartTrack = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      setProgress(0);
+      setCurrentTimeFormatted('00:00');
+    }
+  };
+
+  const handleShuffleTrack = () => {
+    if (cloudTracks.length <= 1) return;
+    let randomIdx = Math.floor(Math.random() * cloudTracks.length);
+    if (randomIdx === currentTrackIndex) {
+      randomIdx = (currentTrackIndex + 1) % cloudTracks.length;
+    }
+    handleSelectTrack(randomIdx);
+  };
 
   // Subtle breathing equalizer wave
   useEffect(() => {
@@ -76,15 +213,6 @@ export default function LandingPage() {
       );
     }, 450);
     return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  // Gentle scrubber progression
-  useEffect(() => {
-    if (!isPlaying) return undefined;
-    const timer = setInterval(() => {
-      setProgress((prev) => (prev >= 99 ? 0 : prev + 0.25));
-    }, 150);
-    return () => clearInterval(timer);
   }, [isPlaying]);
 
   return (
@@ -322,19 +450,19 @@ export default function LandingPage() {
             <div className="rounded-3xl bg-[#1c1b1c]/70 backdrop-blur-3xl border border-white/10 p-6 sm:p-10 shadow-[0_30px_80px_rgba(0,0,0,0.8)] relative overflow-hidden">
               {/* Dynamic subtle ambient glow behind deck */}
               <div
-                className={`absolute inset-0 bg-gradient-to-br ${activePiece.gradient} opacity-40 transition-colors duration-1000 -z-10`}
+                className="absolute inset-0 bg-gradient-to-br from-[#201735]/40 via-[#161226]/40 to-[#0e0e0f] opacity-40 transition-colors duration-1000 -z-10"
               />
 
               {/* Deck Topline */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#d0bcff] animate-pulse" />
+                  <div className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-[#d0bcff] animate-pulse' : 'bg-zinc-600'}`} />
                   <span className="text-xs font-mono uppercase tracking-widest text-[#d0bcff]">
-                    Chamber Monitor • Active
+                    Chamber Monitor • {isPlaying ? 'Streaming Cloud Audio' : 'Ready'}
                   </span>
                 </div>
                 <span className="text-xs font-mono text-zinc-400 bg-white/[0.03] px-3 py-1 rounded-full border border-white/5">
-                  {activePiece.sourceType}
+                  {activePiece.type ? `${activePiece.type} Audio` : 'Cloud Stream'}
                 </span>
               </div>
 
@@ -343,10 +471,20 @@ export default function LandingPage() {
                 {/* Artwork & Rotating Vinyl Core */}
                 <div className="lg:col-span-5 flex flex-col items-center sm:items-start">
                   <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl bg-[#0e0e0f] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl group">
+                    {activePiece.imageSrc ? (
+                      <div className="absolute inset-0">
+                        <img
+                          src={activePiece.imageSrc}
+                          alt={activePiece.title}
+                          className="w-full h-full object-cover opacity-35 scale-105 blur-[1px] group-hover:scale-110 transition-transform duration-700"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/60" />
+                      </div>
+                    ) : null}
                     <motion.div
                       animate={{ rotate: isPlaying ? 360 : 0 }}
                       transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                      className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-white/10 bg-gradient-to-tr from-[#1b1528] to-[#0e0e0f] flex items-center justify-center shadow-inner"
+                      className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-white/10 bg-gradient-to-tr from-[#1b1528] to-[#0e0e0f] flex items-center justify-center shadow-inner relative z-10 backdrop-blur-xs"
                     >
                       <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)]">
                         <span className="material-symbols-outlined text-black text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -354,7 +492,7 @@ export default function LandingPage() {
                         </span>
                       </div>
                     </motion.div>
-                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/80 uppercase tracking-widest">
+                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/80 uppercase tracking-widest relative z-10">
                       Sanctuary Deck
                     </div>
                   </div>
@@ -364,16 +502,16 @@ export default function LandingPage() {
                 <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
                   <div>
                     <span className="text-xs font-serif italic text-[#d0bcff]">
-                      {activePiece.movement}
+                      {activePiece.genre || 'Master Audio Stream'}
                     </span>
-                    <h3 className="text-2xl sm:text-3xl font-light text-white tracking-tight mt-1">
+                    <h3 className="text-2xl sm:text-3xl font-light text-white tracking-tight mt-1 truncate">
                       {activePiece.title}
                     </h3>
                     <p className="text-xs text-zinc-400 font-mono mt-1">
-                      {activePiece.origin}
+                      {activePiece.artist || 'Riveria Cloud Archives'}
                     </p>
                     <p className="text-xs text-zinc-500 italic mt-2">
-                      “{activePiece.atmosphere}”
+                      “{activePiece.album ? `Album: ${activePiece.album}` : 'Direct RFC 9110 byte-range cloud audio streaming'}”
                     </p>
                   </div>
 
@@ -392,12 +530,7 @@ export default function LandingPage() {
                   {/* Scrubber Line */}
                   <div className="space-y-1.5">
                     <div
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const clickX = e.clientX - rect.left;
-                        const pct = Math.min(100, Math.max(0, (clickX / rect.width) * 100));
-                        setProgress(pct);
-                      }}
+                      onClick={handleSeek}
                       className="w-full h-1.5 bg-white/10 rounded-full cursor-pointer relative overflow-hidden group"
                     >
                       <div
@@ -408,8 +541,8 @@ export default function LandingPage() {
                       </div>
                     </div>
                     <div className="flex justify-between text-[11px] font-mono text-zinc-500">
-                      <span>02:18</span>
-                      <span className="text-[#d0bcff]">{activePiece.duration}</span>
+                      <span>{currentTimeFormatted}</span>
+                      <span className="text-[#d0bcff]">{totalDurationFormatted !== '00:00' ? totalDurationFormatted : (activePiece.duration || '03:20')}</span>
                     </div>
                   </div>
 
@@ -417,27 +550,21 @@ export default function LandingPage() {
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() =>
-                          setCurrentTrackIndex((prev) => (prev + 1) % soundscapes.length)
-                        }
+                        onClick={handleShuffleTrack}
                         className="p-2 text-zinc-400 hover:text-[#d0bcff] transition-colors"
-                        title="Alternate Movement"
+                        title="Shuffle Movement"
                       >
                         <Shuffle className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() =>
-                          setCurrentTrackIndex((prev) =>
-                            prev === 0 ? soundscapes.length - 1 : prev - 1
-                          )
-                        }
+                        onClick={handlePrevTrack}
                         className="p-2 text-zinc-400 hover:text-[#d0bcff] transition-colors"
-                        title="Previous"
+                        title="Previous Track"
                       >
                         <SkipBack className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setIsPlaying(!isPlaying)}
+                        onClick={handleTogglePlay}
                         className="w-11 h-11 rounded-full bg-[#d0bcff] hover:bg-[#e9ddff] text-black flex items-center justify-center transition-all transform active:scale-95 shadow-[0_0_20px_rgba(208,188,255,0.4)]"
                         title={isPlaying ? 'Pause' : 'Play'}
                       >
@@ -448,18 +575,16 @@ export default function LandingPage() {
                         )}
                       </button>
                       <button
-                        onClick={() =>
-                          setCurrentTrackIndex((prev) => (prev + 1) % soundscapes.length)
-                        }
+                        onClick={handleNextTrack}
                         className="p-2 text-zinc-400 hover:text-[#d0bcff] transition-colors"
-                        title="Next"
+                        title="Next Track"
                       >
                         <SkipForward className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setProgress(0)}
+                        onClick={handleRestartTrack}
                         className="p-2 text-zinc-400 hover:text-[#d0bcff] transition-colors"
-                        title="Restart Movement"
+                        title="Restart Track"
                       >
                         <Repeat className="w-4 h-4" />
                       </button>
@@ -473,7 +598,7 @@ export default function LandingPage() {
                         min="0"
                         max="100"
                         value={volume}
-                        onChange={(e) => setVolume(Number(e.target.value))}
+                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
                         className="w-20 sm:w-24 accent-[#d0bcff] h-1 rounded-full cursor-pointer bg-white/10"
                       />
                       <span className="text-[10px] font-mono text-zinc-400">{volume}%</span>
@@ -482,26 +607,26 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Movement Selector Switcher */}
+              {/* Cloud Tracks Selector Switcher */}
               <div className="pt-6 border-t border-white/5 flex flex-wrap gap-2">
-                {soundscapes.map((sc, idx) => (
-                  <button
-                    key={sc.title}
-                    onClick={() => {
-                      setCurrentTrackIndex(idx);
-                      setProgress(15);
-                      setIsPlaying(true);
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 ${
-                      currentTrackIndex === idx
-                        ? 'bg-[#d0bcff]/15 text-[#d0bcff] border border-[#d0bcff]/40 shadow-[0_0_15px_rgba(208,188,255,0.2)]'
-                        : 'bg-white/[0.02] text-zinc-400 border border-white/5 hover:border-white/20 hover:text-zinc-200'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    <span>{sc.title}</span>
-                  </button>
-                ))}
+                {cloudTracks.length === 0 ? (
+                  <span className="text-xs font-mono text-zinc-500 italic">Syncing cloud library tracks...</span>
+                ) : (
+                  cloudTracks.map((track, idx) => (
+                    <button
+                      key={track._id || track.title || idx}
+                      onClick={() => handleSelectTrack(idx)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 ${
+                        currentTrackIndex === idx
+                          ? 'bg-[#d0bcff]/15 text-[#d0bcff] border border-[#d0bcff]/40 shadow-[0_0_15px_rgba(208,188,255,0.2)]'
+                          : 'bg-white/[0.02] text-zinc-400 border border-white/5 hover:border-white/20 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      <span className="max-w-[180px] truncate">{track.title}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>

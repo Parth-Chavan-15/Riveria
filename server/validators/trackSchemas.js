@@ -23,8 +23,8 @@ const uploadTrack = z.object({ title: trackFields.title, artist: trackFields.art
 const idParams = z.object({ id: objectId }).strict();
 
 module.exports = {
-  createTrackSchema: z.object({ body: createTrack, query: empty, params: empty }),
-  updateTrackSchema: z.object({ body: updateTrack, query: empty, params: idParams }),
-  trackIdSchema: z.object({ body: empty, query: empty, params: idParams }),
-  uploadTrackSchema: z.object({ body: uploadTrack, query: empty, params: empty })
+  createTrackSchema: z.object({ body: createTrack, query: z.any().optional(), params: z.any().optional() }),
+  updateTrackSchema: z.object({ body: updateTrack, query: z.any().optional(), params: idParams }),
+  trackIdSchema: z.object({ body: z.any().optional(), query: z.any().optional(), params: idParams }),
+  uploadTrackSchema: z.object({ body: uploadTrack, query: z.any().optional(), params: z.any().optional() })
 };

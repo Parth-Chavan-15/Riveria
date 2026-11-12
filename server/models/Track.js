@@ -8,6 +8,7 @@ const trackSchema = new mongoose.Schema({
     imageColor: { type: String, default: 'bg-gradient-to-br from-slate-700 to-slate-900', maxlength: 180 },
     imageSrc: { type: String, default: '', maxlength: 2048 },
     audioSrc: { type: String, default: '', maxlength: 2048 },
+    gridFsId: { type: mongoose.Schema.Types.ObjectId, default: null },
     audioFile: {
         filename: { type: String, default: '' },
         mimeType: { type: String, default: '' },

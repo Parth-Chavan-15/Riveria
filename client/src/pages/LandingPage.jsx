@@ -254,8 +254,8 @@ export default function LandingPage() {
             <a href="#tenets" className="hover:text-[#d0bcff] transition-colors duration-200">
               Principles
             </a>
-            <a href="#sanctuary" className="hover:text-[#d0bcff] transition-colors duration-200">
-              Sanctuary
+            <a href="#horizon" className="hover:text-[#d0bcff] transition-colors duration-200">
+              The Horizon
             </a>
           </nav>
 
@@ -289,7 +289,7 @@ export default function LandingPage() {
             <Sparkles className="w-3 h-3 text-[#fbabff]" />
             <span className="tracking-widest uppercase font-semibold">Riveria Engine</span>
             <span className="text-zinc-600">•</span>
-            <span className="text-zinc-300">High-Fidelity Audio Sanctuary</span>
+            <span className="text-zinc-300">High-Fidelity Sound Architecture</span>
           </motion.div>
 
           {/* Monolithic Literary Headline */}
@@ -302,7 +302,7 @@ export default function LandingPage() {
             Where sound dissolves into memory.{' '}
             <br className="hidden sm:inline" />
             <span className="font-serif italic text-[#d0bcff] font-normal">
-              A listening sanctuary for the daydreamer.
+              An intimate acoustic haven for the daydreamer.
             </span>
           </motion.h1>
 
@@ -327,7 +327,7 @@ export default function LandingPage() {
               to={destination}
               className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_30px_rgba(160,120,255,0.35)] hover:scale-[1.01]"
             >
-              <span>{token ? 'Continue Listening' : 'Enter the Sanctuary'}</span>
+              <span>{token ? 'Continue Listening' : 'Enter Riveria Studio'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
             <a
@@ -491,7 +491,7 @@ export default function LandingPage() {
                       </div>
                     </motion.div>
                     <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/80 uppercase tracking-widest relative z-10">
-                      Sanctuary Deck
+                      Aura Console
                     </div>
                   </div>
                 </div>
@@ -694,7 +694,7 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-white">
-                      Sanctuary Without Surveillance
+                      Stillness Without Surveillance
                     </h3>
                     <p className="text-xs sm:text-sm text-zinc-400 font-light mt-1.5 leading-relaxed">
                       No cross-site pixels. No third-party behavioral trackers. No hidden cookies profiling your emotional states through song choices. Riveria exists simply to play your music.
@@ -710,7 +710,7 @@ export default function LandingPage() {
         </section>
 
         {/* ACT IV: THE INVITATION */}
-        <section id="sanctuary" className="py-28 relative overflow-hidden border-t border-white/5">
+        <section id="horizon" className="py-28 relative overflow-hidden border-t border-white/5">
           <div className="max-w-4xl mx-auto px-6 sm:px-8 text-center relative z-10">
             <div className="p-10 sm:p-16 rounded-3xl bg-gradient-to-b from-[#201f20]/80 via-[#1c1b1c]/90 to-[#0e0e0f] border border-[#d0bcff]/20 backdrop-blur-2xl shadow-[0_20px_70px_rgba(0,0,0,0.7)]">
               <span className="text-xs uppercase tracking-[0.22em] text-[#d0bcff] font-mono">

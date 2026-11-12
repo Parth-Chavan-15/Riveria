@@ -2,7 +2,7 @@
 <p align="center">
   <br />
   <strong>Where sound dissolves into memory.</strong><br />
-  <em>A high-fidelity listening sanctuary and real-time audio synchronization engine.</em>
+  <em>A high-fidelity listening haven and real-time audio synchronization engine.</em>
   <br /><br />
 </p>
 
@@ -16,6 +16,10 @@
   <img src="https://img.shields.io/badge/RFC_9110-Byte_Ranges-9333EA?style=for-the-badge" alt="RFC 9110" />
 </p>
 
+<p align="center">
+  <img src="client/public/landing-preview.png" alt="Riveria Music Engine Landing Page & Chamber Console" width="850" />
+</p>
+
 ---
 
 ## ✦ The Prologue
@@ -24,7 +28,7 @@ In a modern musical landscape crowded with algorithmic clamor, aggressive teleme
 
 Traditional platforms treat your songs like catalog items on an inventory spreadsheet. Riveria reclaims music as an intimate, emotional experience—marrying audiophile-grade playback mechanics with the warmth of shared resonance and total sovereignty over your personal audio archives.
 
-Mount your private recordings directly from disk without uploading a single byte, stream master cloud recordings across delicate byte-range chunks, or step into a zero-latency WebRTC Jam where you and a companion across oceans hear each crescendo at the exact same millisecond.
+Mount your private recordings directly from disk without uploading a single byte, stream master cloud recordings across delicate byte-range chunks directly from MongoDB Atlas GridFS, or step into a zero-latency WebRTC Jam where you and a companion across oceans hear each crescendo at the exact same millisecond.
 
 ---
 
@@ -40,7 +44,7 @@ flowchart TD
 
     subgraph Edge ["Vercel Edge & Cloud CDN"]
         VercelRouter["Vercel Multi-Service Router\n(vercel.json)"]
-        StaticAssets["Static Audio & Visuals\n(/audio & Cover CDN)"]
+        StaticAssets["Static Audio & Visuals\n(/covers & CDN)"]
     end
 
     subgraph Backend ["Riveria Core Engine (Node 20 + Express 5)"]
@@ -51,16 +55,18 @@ flowchart TD
 
     subgraph Database ["Cloud State (MongoDB Atlas)"]
         MongoTracks[("Tracks & Metadata")]
+        MongoGridFS[("GridFS Audio Storage\n(Direct Atlas Chunks)")]
         MongoUsers[("RBAC & Security")]
     end
 
-    Client -->|Public Routes| VercelRouter
-    VercelRouter -->|/(.*)| Client
-    VercelRouter -->|/api/(.*)| Backend
-    Client -->|Static Media| StaticAssets
-    Client <--->|Sub-50ms P2P Telemetry| Client
-    Backend -->|Live Query| Database
-    Backend -->|Audio Slicing| ByteStream
+    Client -->|"Public Web Routes"| VercelRouter
+    VercelRouter -->|"Web App Client"| Client
+    VercelRouter -->|"Express 5 API"| Backend
+    Client -->|"CDN Static Covers"| StaticAssets
+    Client <--->|"P2P DataChannels"| Client
+    Backend -->|"Live Query & Metadata"| MongoTracks
+    Backend -->|"Chunk Streaming"| MongoGridFS
+    Backend -->|"RFC 9110 Range Pipeline"| ByteStream
 ```
 
 ### 1. Sovereign In-Memory Browser Mounts
@@ -69,8 +75,8 @@ flowchart TD
 ### 2. Direct WebRTC Peer Mesh Jams
 Listening together should feel like sitting on the same carpet. Utilizing Socket.IO for ephemeral signaling and establishing direct WebRTC DataChannels between peers, playhead indices, scrub positions, and pause states sync directly between browser sessions with sub-50ms latency—completely bypassing intermediary server serialization.
 
-### 3. RFC 9110 Byte-Range Chunk Slicing
-Server-uploaded cloud recordings stream through custom Node.js read streams supporting standard HTTP `Range` headers (`bytes=start-end`). Listeners enjoy instantaneous seek response across large audio files without waiting for whole-file downloads.
+### 3. Native MongoDB Atlas GridFS & RFC 9110 Byte-Range Slicing
+Audio tracks are stored directly in MongoDB Atlas using native GridFS chunking. When a listener plays or scrubs a track, Riveria pipes binary audio chunks on demand with RFC 9110 HTTP `Range` headers (`206 Partial Content`). This eliminates external cloud hosting dependencies (no Render or S3 buckets needed) while keeping GitHub completely free of media files.
 
 ### 4. Binary Magic-Byte Security
 File extensions and MIME headers can be forged. Riveria inspects raw binary magic bytes at the file header level (verifying `ID3`/sync frames for MP3, `RIFF`/`WAVE` for WAV, `OggS` for OGG, `fLaC` for FLAC, and `ftyp` for MP4/AAC) before accepting uploads, instantly unlinking unverified files.
@@ -85,7 +91,7 @@ Public guests can register and immediately enjoy dynamic cloud streaming and loc
 
 ## ✦ The Living Instrument: Chamber Player
 
-The landing page features an interactive listening sanctuary:
+The landing page features an interactive listening pavilion:
 * **Dynamic Cloud Synchronizer**: Seamlessly loads cloud tracks from `/api/tracks` into memory on arrival.
 * **Master Controls**: Play/pause, track seeking with click-to-scrub timecodes, skip forward/backward, movement shuffle, and precision master gain slider.
 * **Spectrum Equalizer**: Animated wave visualizer pulsating in harmony with the playback state.

@@ -295,8 +295,15 @@ export function JamProvider({ children }) {
     };
 
     connection.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(connection.connectionState)) {
+      if (['failed', 'closed'].includes(connection.connectionState)) {
         closePeer(peerId);
+      } else if (connection.connectionState === 'disconnected') {
+        // Transient network handover buffer (e.g. Wi-Fi to cellular data)
+        setTimeout(() => {
+          if (connection.connectionState === 'disconnected') {
+            closePeer(peerId);
+          }
+        }, 3000);
       }
     };
 
@@ -497,9 +504,11 @@ export function JamProvider({ children }) {
 
     document.addEventListener('visibilitychange', handleTabResume);
     window.addEventListener('focus', handleTabResume);
+    window.addEventListener('online', handleTabResume);
     return () => {
       document.removeEventListener('visibilitychange', handleTabResume);
       window.removeEventListener('focus', handleTabResume);
+      window.removeEventListener('online', handleTabResume);
     };
   }, [handlePlaybackSync, addLog]);
 

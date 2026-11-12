@@ -21,35 +21,35 @@
       "source": "/session",
       "destination": {
         "service": "client",
-        "path": "/index.html"
+        "path": "/"
       }
     },
     {
       "source": "/sync",
       "destination": {
         "service": "client",
-        "path": "/index.html"
+        "path": "/"
       }
     },
     {
       "source": "/settings",
       "destination": {
         "service": "client",
-        "path": "/index.html"
+        "path": "/"
       }
     },
     {
       "source": "/auth",
       "destination": {
         "service": "client",
-        "path": "/index.html"
+        "path": "/"
       }
     },
     {
       "source": "/landing",
       "destination": {
         "service": "client",
-        "path": "/index.html"
+        "path": "/"
       }
     },
     {

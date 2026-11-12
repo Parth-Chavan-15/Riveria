@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { PlayerProvider } from './context/PlayerContext';
 import { AuthProvider } from './context/AuthContext';
+import { JamProvider } from './context/JamContext';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
@@ -75,7 +76,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <PlayerProvider>
-          <AppContent />
+          <JamProvider>
+            <AppContent />
+          </JamProvider>
         </PlayerProvider>
       </AuthProvider>
     </BrowserRouter>

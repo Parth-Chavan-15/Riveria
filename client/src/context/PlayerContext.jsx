@@ -42,6 +42,7 @@ export function PlayerProvider({ children }) {
   // Group Jam & Pseudo-Server Sync refs
   const lastAppliedVersionRef = useRef(0);
   const rateNudgeTimerRef = useRef(null);
+  const clockSkewRef = useRef(0);
 
   // Sync ref with state
   useEffect(() => {
@@ -382,6 +383,15 @@ export function PlayerProvider({ children }) {
       lastAppliedVersionRef.current = incVersion;
     }
 
+    const clientNow = Date.now();
+    // 2. Track and smooth clock skew between server and client
+    if (serverTime && typeof serverTime === 'number') {
+      const instantaneousSkew = serverTime - clientNow;
+      clockSkewRef.current = clockSkewRef.current === 0
+        ? instantaneousSkew
+        : clockSkewRef.current * 0.7 + instantaneousSkew * 0.3;
+    }
+
     const targetId = trackId || (typeof directTrack === 'string' ? directTrack : (directTrack?._id || directTrack?.id));
     const allTracks = [...tracks, ...localTracksRef.current];
     const matchedTrack = allTracks.find((item) => (item._id || item.id) === targetId);
@@ -405,12 +415,12 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     const isTargetPlaying = Boolean(remoteIsPlaying);
 
-    // Calculate target position with server time elapsed offset
+    // 3. Compute target position with clock-skew corrected elapsed offset
     let targetPos = Math.max(0, Number(remotePosition) || 0);
     if (isTargetPlaying) {
-      const now = Date.now();
-      const originTime = serverTime || (timestamp ? new Date(timestamp).getTime() : now);
-      const elapsed = Math.max(0, Math.min(120, (now - originTime) / 1000));
+      const nowServerEst = clientNow + clockSkewRef.current;
+      const originTime = serverTime || (timestamp ? new Date(timestamp).getTime() : nowServerEst);
+      const elapsed = Math.max(0, Math.min(120, (nowServerEst - originTime) / 1000));
       targetPos += elapsed;
     }
 
@@ -438,15 +448,17 @@ export function PlayerProvider({ children }) {
 
     // B. Track is the same
     if (!isTargetPlaying) {
-      // Pause command from room
+      // Pause command from room: immediate crisp pause, snap position, reset rate
       if (!audio.paused) {
         audio.pause();
         setIsPlaying(false);
       }
-      if (Math.abs(audio.currentTime - targetPos) > 0.4) {
+      if (Math.abs(audio.currentTime - targetPos) > 0.05) {
         audio.currentTime = targetPos;
         setPosition(targetPos);
       }
+      if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+      audio.playbackRate = 1.0;
     } else {
       // Play command from room
       if (audio.paused) {
@@ -458,18 +470,26 @@ export function PlayerProvider({ children }) {
           setIsPlaying(true);
         } catch {}
       } else {
-        // Already playing -> Smooth sync without audio buffer breaks
+        // Already playing -> High precision phase-locked alignment
         const drift = targetPos - audio.currentTime;
-        if (action === 'seek' || Math.abs(drift) > 2.0) {
+        if (action === 'seek' || Math.abs(drift) > 0.6) {
+          // Hard snap if drift > 600ms or seek
           audio.currentTime = targetPos;
           setPosition(targetPos);
-        } else if (Math.abs(drift) > 0.25) {
-          // Smooth micro-nudge of playbackRate: inaudible, zero buffer flush!
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
-          audio.playbackRate = drift > 0 ? 1.05 : 0.95;
+          audio.playbackRate = 1.0;
+        } else if (Math.abs(drift) > 0.04) {
+          // Micro-phase convergence (40ms - 600ms): inaudible rate nudge
+          if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+          audio.playbackRate = drift > 0 ? 1.04 : 0.96;
           rateNudgeTimerRef.current = setTimeout(() => {
             if (audioRef.current) audioRef.current.playbackRate = 1.0;
-          }, 1200);
+          }, 800);
+        } else {
+          // Locked within 40ms Haas threshold
+          if (audio.playbackRate !== 1.0) {
+            audio.playbackRate = 1.0;
+          }
         }
       }
     }

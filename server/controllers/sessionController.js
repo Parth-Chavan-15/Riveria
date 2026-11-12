@@ -1,6 +1,6 @@
 const { JamRoom, JamSignal } = require('../models/JamSession');
 
-const PEER_TIMEOUT_MS = 25000; // 25s inactivity = peer disconnected
+const PEER_TIMEOUT_MS = 120000; // 120s inactivity = peer disconnected (protects background tabs)
 
 exports.joinRoom = async (req, res, next) => {
   try {

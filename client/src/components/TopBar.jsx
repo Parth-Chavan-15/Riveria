@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useJam } from '../context/JamContext';
 import { io } from 'socket.io-client';
 import { getAccessToken } from '../services/api';
 
@@ -14,6 +15,7 @@ const ROUTE_TITLES = {
 
 export default function TopBar({ onToggleMobileMenu = () => {} }) {
   const { user, logout } = useAuth();
+  const { joinedRoom } = useJam();
   const location = useLocation();
 
   // Notification State
@@ -91,6 +93,18 @@ export default function TopBar({ onToggleMobileMenu = () => {} }) {
 
       {/* RIGHT: Role Badge, Notifications & Refined User Pill */}
       <div className="flex items-center gap-3 md:gap-4">
+        {/* Active Jam Room Pill */}
+        {joinedRoom && (
+          <Link
+            to="/session"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold hover:bg-emerald-500/25 transition-all shadow-[0_0_12px_rgba(52,211,153,0.3)]"
+            title="Active WebRTC Jam Room - Tap to open"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Jam: {joinedRoom}</span>
+          </Link>
+        )}
+
         {/* Role-Based UI Element */}
         {user?.role === 'admin' ? (
           <span className="inline-flex items-center gap-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(244,63,94,0.25)]">

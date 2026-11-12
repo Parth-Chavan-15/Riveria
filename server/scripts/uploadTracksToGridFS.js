@@ -39,22 +39,22 @@ const TRACK_METADATA = [
     imageSrc: '/covers/sunflower.png'
   },
   {
-    pattern: /birds/i,
+    pattern: /birds.*\.mp3$/i,
     title: 'Birds',
     artist: 'Imagine Dragons',
-    duration: '03:39',
-    cleanFilename: 'imagine-dragons-birds.mp4',
-    mimeType: 'audio/mp4',
+    duration: '03:42',
+    cleanFilename: 'imagine-dragons-birds.mp3',
+    mimeType: 'audio/mpeg',
     imageColor: 'bg-gradient-to-br from-emerald-600 via-teal-700 to-zinc-950',
     imageSrc: '/covers/birds.jpg'
   },
   {
-    pattern: /happier/i,
+    pattern: /happier.*\.mp3$/i,
     title: 'Happier',
     artist: 'Marshmello ft. Bastille',
-    duration: '03:34',
-    cleanFilename: 'marshmello-happier.mp4',
-    mimeType: 'audio/mp4',
+    duration: '03:53',
+    cleanFilename: 'marshmello-happier.mp3',
+    mimeType: 'audio/mpeg',
     imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-indigo-950',
     imageSrc: '/covers/happier.jpg'
   }

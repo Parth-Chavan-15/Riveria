@@ -21,6 +21,7 @@ import {
   Headphones,
   Disc3,
   SlidersHorizontal,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiRequest, apiUrl } from '../services/api';
@@ -30,43 +31,106 @@ const ACT_METADATA = [
     id: 'prologue',
     actNumber: 'ACT I',
     actName: 'The Awakening',
-    accentColor: 'from-amber-500/20 via-orange-500/10 to-transparent',
-    borderColor: 'border-amber-400/30',
-    glowColor: 'rgba(245, 158, 11, 0.25)',
+    accentColor: 'from-amber-500/25 via-orange-500/10 to-transparent',
+    borderColor: 'border-amber-400/40',
+    glowColor: 'rgba(245, 158, 11, 0.3)',
+    transitionText: 'Descending into Sovereign Stillness',
   },
   {
     id: 'philosophy',
     actNumber: 'ACT II',
     actName: 'The Sovereign Haven',
-    accentColor: 'from-cyan-500/20 via-blue-500/10 to-transparent',
-    borderColor: 'border-cyan-400/30',
-    glowColor: 'rgba(6, 182, 212, 0.25)',
+    accentColor: 'from-cyan-500/25 via-blue-500/10 to-transparent',
+    borderColor: 'border-cyan-400/40',
+    glowColor: 'rgba(6, 182, 212, 0.3)',
+    transitionText: 'Crossing into Acoustic Resonance',
   },
   {
     id: 'chamber',
     actNumber: 'ACT III',
     actName: 'The Living Chamber',
-    accentColor: 'from-purple-500/20 via-indigo-500/10 to-transparent',
+    accentColor: 'from-purple-500/25 via-indigo-500/10 to-transparent',
     borderColor: 'border-[#d0bcff]/40',
-    glowColor: 'rgba(208, 188, 255, 0.3)',
+    glowColor: 'rgba(208, 188, 255, 0.35)',
+    transitionText: 'Approaching the Console Deck',
   },
   {
     id: 'tenets',
     actNumber: 'ACT IV',
     actName: 'Architecture of Restraint',
-    accentColor: 'from-emerald-500/20 via-teal-500/10 to-transparent',
-    borderColor: 'border-emerald-400/30',
-    glowColor: 'rgba(16, 185, 129, 0.25)',
+    accentColor: 'from-emerald-500/25 via-teal-500/10 to-transparent',
+    borderColor: 'border-emerald-400/40',
+    glowColor: 'rgba(16, 185, 129, 0.3)',
+    transitionText: 'Entering the Sovereign Matrix',
   },
   {
     id: 'horizon',
     actNumber: 'ACT V',
     actName: 'The Daydream Horizon',
-    accentColor: 'from-violet-500/20 via-fuchsia-500/10 to-transparent',
-    borderColor: 'border-fuchsia-400/30',
-    glowColor: 'rgba(217, 70, 239, 0.25)',
+    accentColor: 'from-violet-500/25 via-fuchsia-500/10 to-transparent',
+    borderColor: 'border-fuchsia-400/40',
+    glowColor: 'rgba(217, 70, 239, 0.3)',
+    transitionText: 'Reaching the Infinite Reverie',
   },
 ];
+
+// Smooth Fade-out helper (lowers volume to 0 then pauses)
+function fadeOut(audioElem, durationMs = 350) {
+  return new Promise((resolve) => {
+    if (!audioElem || audioElem.paused) {
+      if (audioElem) audioElem.volume = 0;
+      return resolve();
+    }
+    const startVol = audioElem.volume;
+    if (startVol <= 0.01) {
+      audioElem.pause();
+      return resolve();
+    }
+    const steps = 14;
+    const stepInterval = durationMs / steps;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      const factor = Math.max(0, 1 - step / steps);
+      audioElem.volume = startVol * factor;
+      if (step >= steps) {
+        clearInterval(timer);
+        audioElem.pause();
+        audioElem.volume = 0;
+        resolve();
+      }
+    }, stepInterval);
+  });
+}
+
+// Smooth Fade-in helper (plays from volume 0 up to target)
+function fadeIn(audioElem, targetVol, durationMs = 450) {
+  return new Promise((resolve) => {
+    if (!audioElem) return resolve();
+    audioElem.volume = 0;
+    audioElem
+      .play()
+      .then(() => {
+        const steps = 16;
+        const stepInterval = durationMs / steps;
+        let step = 0;
+        const timer = setInterval(() => {
+          step++;
+          const factor = Math.min(1, step / steps);
+          audioElem.volume = targetVol * factor;
+          if (step >= steps) {
+            clearInterval(timer);
+            audioElem.volume = targetVol;
+            resolve();
+          }
+        }, stepInterval);
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') console.warn('Fade-in play err:', err);
+        resolve();
+      });
+  });
+}
 
 export default function LandingPage() {
   const { token } = useAuth();
@@ -83,6 +147,8 @@ export default function LandingPage() {
   const [activeSection, setActiveSection] = useState(0);
   const [followScroll, setFollowScroll] = useState(true);
   const [showFloatingDock, setShowFloatingDock] = useState(false);
+  const [isCrossfading, setIsCrossfading] = useState(false);
+  const [crossfadeTransition, setCrossfadeTransition] = useState({ from: '', to: '' });
 
   // Multi-threaded Audio Pool & References
   const activeAudioRef = useRef(null);
@@ -161,99 +227,104 @@ export default function LandingPage() {
     imageColor: 'bg-gradient-to-br from-[#201735] via-[#161226] to-[#0e0e0f]',
   };
 
-  // 2. Playback Lifecycle Manager
+  // 2. Playback Lifecycle Manager with Sequential Fade-Out -> Fade-In
   const playTrackDirect = useCallback(
-    async (idx, shouldPlay = true, fadeIn = false) => {
+    async (idx, shouldPlay = true, shouldCrossfade = false) => {
       const targetTrack = cloudTracksRef.current[idx];
       if (!targetTrack) return;
 
       const url = getAudioUrl(targetTrack);
       if (!url) return;
 
-      let audioElem = audioPoolRef.current.get(targetTrack._id);
-      if (!audioElem) {
-        audioElem = new Audio();
-        audioElem.preload = 'auto';
-        audioElem.src = url;
-        audioPoolRef.current.set(targetTrack._id, audioElem);
+      let nextAudioElem = audioPoolRef.current.get(targetTrack._id);
+      if (!nextAudioElem) {
+        nextAudioElem = new Audio();
+        nextAudioElem.preload = 'auto';
+        nextAudioElem.src = url;
+        audioPoolRef.current.set(targetTrack._id, nextAudioElem);
       }
 
-      // Detach listeners from previous audio if switching
       const prevAudio = activeAudioRef.current;
-      if (prevAudio && prevAudio !== audioElem) {
-        if (fadeIn && !prevAudio.paused) {
-          // Smooth crossfade out over 150ms
-          const startVol = prevAudio.volume;
-          const fadeSteps = 8;
-          for (let step = 1; step <= fadeSteps; step++) {
-            setTimeout(() => {
-              try {
-                prevAudio.volume = Math.max(0, startVol * (1 - step / fadeSteps));
-                if (step === fadeSteps) {
-                  prevAudio.pause();
-                  prevAudio.currentTime = 0;
-                }
-              } catch {
-                /* noop */
-              }
-            }, step * 18);
+      const prevTrack = cloudTracksRef.current[currentTrackIndex];
+
+      // Sequential Crossfade: Prior audio fades out completely to silence FIRST, then next audio fades in!
+      if (shouldCrossfade && prevAudio && !prevAudio.paused && prevAudio !== nextAudioElem) {
+        setIsCrossfading(true);
+        setCrossfadeTransition({
+          from: prevTrack?.title || 'Movement',
+          to: targetTrack.title,
+        });
+
+        // Step 1: Smoothly fade out the active track to silence over 350ms
+        await fadeOut(prevAudio, 350);
+
+        // Step 2: Switch references once prior audio has stopped
+        activeAudioRef.current = nextAudioElem;
+        setCurrentTrackIndex(idx);
+
+        // Setup time updates
+        nextAudioElem.ontimeupdate = () => {
+          if (nextAudioElem.duration && isFinite(nextAudioElem.duration)) {
+            setProgress((nextAudioElem.currentTime / nextAudioElem.duration) * 100);
+            const curMins = Math.floor(nextAudioElem.currentTime / 60);
+            const curSecs = Math.floor(nextAudioElem.currentTime % 60);
+            setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
+            const durMins = Math.floor(nextAudioElem.duration / 60);
+            const durSecs = Math.floor(nextAudioElem.duration % 60);
+            setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
           }
-        } else {
+        };
+
+        nextAudioElem.onended = () => {
+          const nextIdx = (idx + 1) % (cloudTracksRef.current.length || 1);
+          playTrackDirectRef.current?.(nextIdx, true, true);
+        };
+
+        // Step 3: Smoothly fade in the new track from silence to master volume over 450ms
+        await fadeIn(nextAudioElem, volume / 100, 450);
+        setIsPlaying(true);
+        setTimeout(() => setIsCrossfading(false), 250);
+      } else {
+        // Direct non-crossfade play or same track toggle
+        if (prevAudio && prevAudio !== nextAudioElem) {
           prevAudio.pause();
+          prevAudio.currentTime = 0;
         }
-      }
 
-      activeAudioRef.current = audioElem;
-      setCurrentTrackIndex(idx);
+        activeAudioRef.current = nextAudioElem;
+        setCurrentTrackIndex(idx);
 
-      // Event attachments
-      audioElem.ontimeupdate = () => {
-        if (audioElem.duration && isFinite(audioElem.duration)) {
-          setProgress((audioElem.currentTime / audioElem.duration) * 100);
-          const curMins = Math.floor(audioElem.currentTime / 60);
-          const curSecs = Math.floor(audioElem.currentTime % 60);
-          setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
-          const durMins = Math.floor(audioElem.duration / 60);
-          const durSecs = Math.floor(audioElem.duration % 60);
-          setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
-        }
-      };
-
-      audioElem.onended = () => {
-        const nextIdx = (idx + 1) % (cloudTracksRef.current.length || 1);
-        playTrackDirectRef.current?.(nextIdx, true, true);
-      };
-
-      if (shouldPlay) {
-        try {
-          if (fadeIn) {
-            audioElem.volume = 0;
-            await audioElem.play();
-            setIsPlaying(true);
-            const targetVol = volume / 100;
-            const fadeSteps = 10;
-            for (let step = 1; step <= fadeSteps; step++) {
-              setTimeout(() => {
-                try {
-                  audioElem.volume = (targetVol * step) / fadeSteps;
-                } catch {
-                  /* noop */
-                }
-              }, step * 25);
-            }
-          } else {
-            audioElem.volume = volume / 100;
-            await audioElem.play();
-            setIsPlaying(true);
+        nextAudioElem.ontimeupdate = () => {
+          if (nextAudioElem.duration && isFinite(nextAudioElem.duration)) {
+            setProgress((nextAudioElem.currentTime / nextAudioElem.duration) * 100);
+            const curMins = Math.floor(nextAudioElem.currentTime / 60);
+            const curSecs = Math.floor(nextAudioElem.currentTime % 60);
+            setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
+            const durMins = Math.floor(nextAudioElem.duration / 60);
+            const durSecs = Math.floor(nextAudioElem.duration % 60);
+            setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
           }
-        } catch (err) {
-          if (err.name !== 'AbortError') {
-            console.warn('Direct playback notification:', err);
+        };
+
+        nextAudioElem.onended = () => {
+          const nextIdx = (idx + 1) % (cloudTracksRef.current.length || 1);
+          playTrackDirectRef.current?.(nextIdx, true, true);
+        };
+
+        if (shouldPlay) {
+          try {
+            nextAudioElem.volume = volume / 100;
+            await nextAudioElem.play();
+            setIsPlaying(true);
+          } catch (err) {
+            if (err.name !== 'AbortError') {
+              console.warn('Direct playback notification:', err);
+            }
           }
         }
       }
     },
-    [getAudioUrl, volume]
+    [getAudioUrl, volume, currentTrackIndex]
   );
 
   useEffect(() => {
@@ -360,7 +431,7 @@ export default function LandingPage() {
           if (actIndex !== -1 && actIndex !== activeSection) {
             setActiveSection(actIndex);
 
-            // If user has enabled Follow Scroll, seamlessly crossfade to that section's track!
+            // If user has enabled Follow Scroll, smoothly fade out prior track & fade in next track!
             if (followScroll && cloudTracksRef.current.length > 0) {
               const targetIdx = actIndex % cloudTracksRef.current.length;
               if (targetIdx !== currentTrackIndex && !isTransitioningRef.current) {
@@ -368,7 +439,7 @@ export default function LandingPage() {
                 playTrackDirect(targetIdx, isPlaying, true);
                 setTimeout(() => {
                   isTransitioningRef.current = false;
-                }, 600);
+                }, 900);
               }
             }
           }
@@ -384,8 +455,12 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#0a0a0f] text-[#e5e2e3] font-['Inter',sans-serif] selection:bg-[#a078ff] selection:text-white relative overflow-x-hidden">
       {/* Dynamic Atmospheric Veils that morph as the user journeys down the page */}
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden transition-all duration-1000">
-        <div
-          className={`absolute -top-[20%] left-1/2 -translate-x-1/2 w-[85vw] max-w-[1100px] h-[700px] bg-gradient-to-b ${ACT_METADATA[activeSection]?.accentColor || 'from-[#d0bcff]/10 via-[#a078ff]/5 to-transparent'} rounded-full blur-[140px] transition-all duration-1000`}
+        <motion.div
+          key={activeSection}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
+          className={`absolute -top-[20%] left-1/2 -translate-x-1/2 w-[90vw] max-w-[1200px] h-[750px] bg-gradient-to-b ${ACT_METADATA[activeSection]?.accentColor || 'from-[#d0bcff]/10 via-[#a078ff]/5 to-transparent'} rounded-full blur-[140px]`}
         />
         <div className="absolute top-[35%] -right-32 w-[600px] h-[600px] bg-[#8fcdff]/5 rounded-full blur-[160px]" />
         <div className="absolute top-[65%] -left-32 w-[650px] h-[650px] bg-[#fbabff]/5 rounded-full blur-[160px]" />
@@ -414,7 +489,7 @@ export default function LandingPage() {
               <a
                 key={act.id}
                 href={`#${act.id}`}
-                className={`transition-all duration-300 flex items-center gap-1.5 ${
+                className={`transition-all duration-300 flex items-center gap-1.5 relative py-1 ${
                   activeSection === idx
                     ? 'text-[#d0bcff] font-semibold drop-shadow-[0_0_8px_rgba(208,188,255,0.4)]'
                     : 'hover:text-zinc-200'
@@ -422,6 +497,13 @@ export default function LandingPage() {
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${activeSection === idx ? 'bg-[#d0bcff]' : 'bg-transparent'}`} />
                 <span>{act.actName}</span>
+                {activeSection === idx && (
+                  <motion.div
+                    layoutId="activeActUnderline"
+                    className="absolute -bottom-1 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#d0bcff] to-transparent"
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
               </a>
             ))}
           </nav>
@@ -525,7 +607,7 @@ export default function LandingPage() {
           >
             <Headphones className="w-3.5 h-3.5 text-[#d0bcff] mr-2" />
             <span className="text-[11px] font-mono text-zinc-400 mr-3">
-              {isPlaying ? 'Now Playing: Sunflower' : 'Scroll down to travel across soundscapes'}
+              {isPlaying ? 'Now Playing: Sunflower' : 'Scroll down to journey through soundscapes'}
             </span>
             {waveAmplitudes.slice(0, 10).map((amp, idx) => (
               <motion.span
@@ -536,7 +618,26 @@ export default function LandingPage() {
               />
             ))}
           </motion.div>
+
+          {/* Scroll Down Prompt with Gentle Bobbing */}
+          <motion.a
+            href="#philosophy"
+            animate={{ y: [0, 6, 0] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="mt-12 inline-flex flex-col items-center gap-1.5 text-zinc-500 hover:text-[#d0bcff] transition-colors"
+          >
+            <span className="text-[10px] font-mono uppercase tracking-widest">Explore Movements</span>
+            <ChevronDown className="w-4 h-4" />
+          </motion.a>
         </section>
+
+        {/* Dynamic Soundwave Act Divider 1 ➔ 2 */}
+        <div className="relative py-8 flex items-center justify-center overflow-hidden">
+          <div className="w-full max-w-4xl h-[1px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+          <div className="absolute px-4 py-1 rounded-full bg-[#101018] border border-cyan-400/20 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300">
+            Movement I ➔ Movement II
+          </div>
+        </div>
 
         {/* ACT II: THE PHILOSOPHY OF REVERIE */}
         <section
@@ -545,9 +646,9 @@ export default function LandingPage() {
         >
           <div className="max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-100px' }}
+              viewport={{ once: true, margin: '-80px' }}
               transition={{ duration: 0.8 }}
               className="max-w-2xl mb-16"
             >
@@ -568,10 +669,11 @@ export default function LandingPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {/* Pillar 1 */}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 25 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.1 }}
+                whileHover={{ y: -4 }}
                 className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-cyan-400/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
               >
                 <div>
@@ -593,10 +695,11 @@ export default function LandingPage() {
 
               {/* Pillar 2 */}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 25 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.2 }}
+                whileHover={{ y: -4 }}
                 className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-[#d0bcff]/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
               >
                 <div>
@@ -618,10 +721,11 @@ export default function LandingPage() {
 
               {/* Pillar 3 */}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 25 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.3 }}
+                whileHover={{ y: -4 }}
                 className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-emerald-400/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
               >
                 <div>
@@ -644,13 +748,21 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Dynamic Soundwave Act Divider 2 ➔ 3 */}
+        <div className="relative py-8 flex items-center justify-center overflow-hidden">
+          <div className="w-full max-w-4xl h-[1px] bg-gradient-to-r from-transparent via-[#d0bcff]/30 to-transparent" />
+          <div className="absolute px-4 py-1 rounded-full bg-[#12111c] border border-[#d0bcff]/20 text-[10px] font-mono uppercase tracking-[0.2em] text-[#d0bcff]">
+            Movement II ➔ Movement III
+          </div>
+        </div>
+
         {/* ACT III: THE LIVING CHAMBER (Fluid Master Deck) */}
         <section id="chamber" className="py-28 relative">
           <div className="max-w-5xl mx-auto px-6 sm:px-8">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-100px' }}
+              viewport={{ once: true, margin: '-80px' }}
               transition={{ duration: 0.8 }}
               className="text-center max-w-2xl mx-auto mb-16"
             >
@@ -682,12 +794,15 @@ export default function LandingPage() {
                 <div className="flex items-center gap-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-[#d0bcff] animate-pulse' : 'bg-zinc-600'}`} />
                   <span className="text-xs font-mono uppercase tracking-widest text-[#d0bcff]">
-                    Chamber Monitor • {isPlaying ? 'Live Cloud Streaming' : 'Ready'}
+                    Chamber Monitor • {isPlaying ? (isCrossfading ? 'Crossfading Tracks...' : 'Live Cloud Audio') : 'Ready'}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono text-zinc-400 bg-white/[0.04] px-3 py-1 rounded-full border border-white/5">
                     {activePiece.type ? `${activePiece.type} Audio` : 'Cloud Stream'}
+                  </span>
+                  <span className="text-xs font-mono text-[#d0bcff]/80 bg-[#251e36] px-2.5 py-0.5 rounded-full border border-[#d0bcff]/20">
+                    MP3 256k
                   </span>
                 </div>
               </div>
@@ -860,13 +975,21 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Dynamic Soundwave Act Divider 3 ➔ 4 */}
+        <div className="relative py-8 flex items-center justify-center overflow-hidden">
+          <div className="w-full max-w-4xl h-[1px] bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
+          <div className="absolute px-4 py-1 rounded-full bg-[#101514] border border-emerald-400/20 text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-300">
+            Movement III ➔ Movement IV
+          </div>
+        </div>
+
         {/* ACT IV: THE ARCHITECTURE OF RESTRAINT */}
         <section id="tenets" className="py-28 border-t border-white/5 bg-[#0a0a0f]">
           <div className="max-w-5xl mx-auto px-6 sm:px-8">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-100px' }}
+              viewport={{ once: true, margin: '-80px' }}
               transition={{ duration: 0.8 }}
               className="max-w-2xl mb-16"
             >
@@ -891,6 +1014,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
+                whileHover={{ x: 4 }}
                 className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-emerald-400/40 transition-all duration-300"
               >
                 <div className="flex items-start gap-4 max-w-2xl">
@@ -917,6 +1041,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.1 }}
+                whileHover={{ x: 4 }}
                 className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-[#d0bcff]/40 transition-all duration-300"
               >
                 <div className="flex items-start gap-4 max-w-2xl">
@@ -943,6 +1068,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.2 }}
+                whileHover={{ x: 4 }}
                 className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-cyan-400/40 transition-all duration-300"
               >
                 <div className="flex items-start gap-4 max-w-2xl">
@@ -965,6 +1091,14 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* Dynamic Soundwave Act Divider 4 ➔ 5 */}
+        <div className="relative py-8 flex items-center justify-center overflow-hidden">
+          <div className="w-full max-w-4xl h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/30 to-transparent" />
+          <div className="absolute px-4 py-1 rounded-full bg-[#18111e] border border-fuchsia-400/20 text-[10px] font-mono uppercase tracking-[0.2em] text-fuchsia-300">
+            Movement IV ➔ Movement V
+          </div>
+        </div>
 
         {/* ACT V: THE DAYDREAM HORIZON */}
         <section id="horizon" className="py-28 relative overflow-hidden border-t border-white/5">
@@ -1021,7 +1155,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
             transition={{ duration: 0.4 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92vw] max-w-2xl bg-[#12111a]/85 backdrop-blur-2xl border border-[#d0bcff]/30 rounded-2xl p-3 sm:px-5 sm:py-3 shadow-[0_15px_50px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[94vw] max-w-2xl bg-[#12111a]/90 backdrop-blur-2xl border border-[#d0bcff]/30 rounded-2xl p-3 sm:px-5 sm:py-3 shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-between gap-4"
           >
             {/* Left: Act + Track Metadata */}
             <div className="flex items-center gap-3 overflow-hidden">
@@ -1035,6 +1169,11 @@ export default function LandingPage() {
                   <span className="text-[10px] font-mono uppercase tracking-wider text-[#d0bcff] font-semibold">
                     {ACT_METADATA[activeSection]?.actNumber}: {ACT_METADATA[activeSection]?.actName}
                   </span>
+                  {isCrossfading && (
+                    <span className="text-[9px] font-mono bg-purple-500/20 text-[#d0bcff] px-1.5 py-0.2 rounded border border-[#d0bcff]/30 animate-pulse">
+                      Fading: {crossfadeTransition.from} ➔ {crossfadeTransition.to}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs font-medium text-white truncate max-w-[140px] sm:max-w-[200px]">
                   {activePiece.title}

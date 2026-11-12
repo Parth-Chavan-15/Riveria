@@ -12,7 +12,7 @@ const ROUTE_TITLES = {
   '/landing': { title: 'Engine Overview', subtitle: 'Poetic Sanctuary Architecture' }
 };
 
-export default function TopBar() {
+export default function TopBar({ onToggleMobileMenu = () => {} }) {
   const { user, logout } = useAuth();
   const location = useLocation();
 
@@ -64,9 +64,18 @@ export default function TopBar() {
   const userInitial = (user?.email?.[0] || 'U').toUpperCase();
 
   return (
-    <header className="fixed top-0 left-0 md:left-80 right-0 h-20 bg-[#09090c]/85 backdrop-blur-2xl border-b border-white/5 flex items-center justify-between px-6 md:px-10 z-30 transition-all duration-300">
-      {/* LEFT: Context Breadcrumb & Engine Telemetry */}
-      <div className="flex items-center gap-4">
+    <header className="fixed top-0 left-0 right-0 w-full h-20 bg-[#09090c]/70 backdrop-blur-2xl border-b border-white/5 flex items-center justify-between px-4 sm:px-6 md:pl-80 md:pr-10 z-20 transition-all duration-300">
+      {/* LEFT: Mobile Menu Button & Context Breadcrumb */}
+      <div className="flex items-center gap-3">
+        {/* Mobile Hamburger Toggle Button */}
+        <button
+          onClick={onToggleMobileMenu}
+          aria-label="Toggle Navigation Drawer"
+          className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 active:scale-95 transition-all flex-shrink-0"
+        >
+          <span className="material-symbols-outlined text-xl">menu</span>
+        </button>
+
         <div>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

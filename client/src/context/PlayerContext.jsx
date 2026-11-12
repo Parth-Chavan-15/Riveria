@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl } from '../services/api';
 import { audioCoordinator } from '../services/audioCoordinator';
 import { PlayerContext } from './playerContextDef';
+import { extractAudioMetadata } from '../utils/audioMetadata';
 
 function sourceFor(track) {
   if (!track) return '';
@@ -249,18 +250,28 @@ export function PlayerProvider({ children }) {
     setPosition(target);
   }, []);
 
-  const mountLocalFiles = useCallback((files) => {
-    const mounted = [...files].filter((file) => file.type.startsWith('audio/')).map((file) => ({
-      _id: `local-${crypto.randomUUID()}`,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      artist: 'This device',
-      duration: 'Local',
-      type: 'Local',
-      imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950',
-      localUrl: URL.createObjectURL(file),
-      fileSize: file.size,
-      rawFile: file
-    }));
+  const mountLocalFiles = useCallback(async (files) => {
+    const audioFiles = [...files].filter((file) => file.type.startsWith('audio/') || /\.(mp3|wav|ogg|aac|m4a|flac|webm)$/i.test(file.name));
+    if (audioFiles.length === 0) return 0;
+
+    const mounted = await Promise.all(
+      audioFiles.map(async (file) => {
+        const meta = await extractAudioMetadata(file);
+        return {
+          _id: `local-${crypto.randomUUID()}`,
+          title: meta.title,
+          artist: meta.artist,
+          imageSrc: meta.thumbnailUrl,
+          duration: 'Local',
+          type: 'Local',
+          imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950',
+          localUrl: URL.createObjectURL(file),
+          fileSize: file.size,
+          rawFile: file
+        };
+      })
+    );
+
     setLocalTracks((tracks) => {
       const next = [...mounted, ...tracks];
       localTracksRef.current = next;
@@ -273,6 +284,7 @@ export function PlayerProvider({ children }) {
     setLocalTracks((tracks) => {
       const track = tracks.find((item) => item._id === id);
       if (track?.localUrl) URL.revokeObjectURL(track.localUrl);
+      if (track?.imageSrc && track.imageSrc.startsWith('blob:')) URL.revokeObjectURL(track.imageSrc);
       const next = tracks.filter((item) => item._id !== id);
       localTracksRef.current = next;
       return next;

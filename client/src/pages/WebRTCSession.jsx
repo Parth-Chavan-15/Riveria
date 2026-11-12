@@ -39,6 +39,7 @@ export default function WebRTCSession() {
   const tracksRef = useRef([]);
   const pollTimerRef = useRef(null);
   const signalingModeRef = useRef('socket'); // 'socket' or 'rest'
+  const activeIncomingTransferRef = useRef(null);
 
   const [roomId, setRoomId] = useState(() => searchParams.get('room')?.toUpperCase() || '');
   const [joinedRoom, setJoinedRoom] = useState('');
@@ -119,6 +120,51 @@ export default function WebRTCSession() {
     }
   }, [joinedRoom, addLog]);
 
+  // Stream local audio file bytes across WebRTC DataChannel directly to connected peers
+  const streamLocalTrackToPeers = useCallback(async (track) => {
+    if (!track?.rawFile) return;
+    try {
+      addLog('P2P_FILE', `Broadcasting private audio stream for "${track.title}" to peer(s)...`);
+      const buffer = await track.rawFile.arrayBuffer();
+      const metaPacket = {
+        type: 'START_AUDIO_TRANSFER',
+        trackId: track._id,
+        title: track.title,
+        artist: track.artist,
+        mimeType: track.rawFile.type || 'audio/mpeg',
+        totalBytes: buffer.byteLength
+      };
+
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          channel.send(JSON.stringify(metaPacket));
+        }
+      });
+
+      const CHUNK_SIZE = 16384;
+      for (let offset = 0; offset < buffer.byteLength; offset += CHUNK_SIZE) {
+        const slice = buffer.slice(offset, offset + CHUNK_SIZE);
+        peersRef.current.forEach(({ channel }) => {
+          if (channel?.readyState === 'open') {
+            channel.send(slice);
+          }
+        });
+        if (offset % (CHUNK_SIZE * 16) === 0) {
+          await new Promise((r) => setTimeout(r, 4));
+        }
+      }
+
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          channel.send(JSON.stringify({ type: 'END_AUDIO_TRANSFER', trackId: track._id }));
+        }
+      });
+      addLog('P2P_FILE', `P2P audio stream for "${track.title}" received by peer device(s).`);
+    } catch {
+      addLog('ERR', `P2P audio stream failed for "${track.title}".`);
+    }
+  }, [addLog]);
+
   // Create an RTCPeerConnection and wire DataChannel
   const createPeer = useCallback((peerId, initiator) => {
     if (peersRef.current.has(peerId)) return peersRef.current.get(peerId);
@@ -127,6 +173,8 @@ export default function WebRTCSession() {
 
     const registerChannel = (channel) => {
       peer.channel = channel;
+      channel.binaryType = 'arraybuffer';
+
       channel.onopen = () => {
         updatePeersState();
         setStatus(`Direct P2P Encrypted Tunnel Active with ${peersRef.current.size} peer(s).`);
@@ -140,11 +188,55 @@ export default function WebRTCSession() {
 
       channel.onmessage = (event) => {
         try {
+          // 1. Handle incoming binary audio chunk
+          if (event.data instanceof ArrayBuffer) {
+            const transfer = activeIncomingTransferRef.current;
+            if (transfer) {
+              transfer.chunks.push(event.data);
+              transfer.receivedBytes += event.data.byteLength;
+            }
+            return;
+          }
+
+          // 2. Handle JSON control packets
           const packet = JSON.parse(event.data);
           if (packet.type === 'PLAYBACK_SYNC') {
             handlePlaybackSync(packet);
           } else if (packet.type === 'PLAYLIST_SYNC') {
             handlePlaylistSync(packet.playlist);
+          } else if (packet.type === 'START_AUDIO_TRANSFER') {
+            activeIncomingTransferRef.current = {
+              trackId: packet.trackId,
+              title: packet.title,
+              artist: packet.artist,
+              mimeType: packet.mimeType || 'audio/mpeg',
+              chunks: [],
+              receivedBytes: 0,
+              totalBytes: packet.totalBytes
+            };
+            addLog('P2P_FILE', `Receiving private audio stream for "${packet.title}" from peer...`);
+          } else if (packet.type === 'END_AUDIO_TRANSFER') {
+            const transfer = activeIncomingTransferRef.current;
+            if (transfer && transfer.trackId === packet.trackId) {
+              const blob = new Blob(transfer.chunks, { type: transfer.mimeType });
+              const localUrl = URL.createObjectURL(blob);
+              const p2pTrack = {
+                _id: transfer.trackId,
+                title: transfer.title,
+                artist: transfer.artist || 'Peer Device',
+                type: 'Local',
+                localUrl,
+                imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950'
+              };
+              addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Playing in real time.`);
+              player.playTrack(p2pTrack);
+              activeIncomingTransferRef.current = null;
+            }
+          } else if (packet.type === 'REQUEST_PLAY_TRACK') {
+            const match = player.localTracks.find((t) => t._id === packet.trackId);
+            if (match) {
+              streamLocalTrackToPeers(match);
+            }
           }
         } catch {}
       };
@@ -179,7 +271,7 @@ export default function WebRTCSession() {
     peersRef.current.set(peerId, peer);
     updatePeersState();
     return peer;
-  }, [closePeer, dispatchSignal, handlePlaybackSync, handlePlaylistSync, collabPlaylist, addLog, updatePeersState]);
+  }, [closePeer, dispatchSignal, handlePlaybackSync, handlePlaylistSync, collabPlaylist, addLog, updatePeersState, player, streamLocalTrackToPeers]);
 
   // Handle incoming WebRTC signal (offer/answer/candidate)
   const processSignal = useCallback(async (fromId, signal) => {
@@ -460,19 +552,31 @@ export default function WebRTCSession() {
   };
 
   // Play a track from Collaborative Playlist
-  const handlePlayCollabTrack = (item) => {
-    // If local track is from this device, play it directly
+  const handlePlayCollabTrack = useCallback(async (item) => {
     const localMatch = player.localTracks.find((t) => t._id === item.id);
     const cloudMatch = tracksRef.current.find((t) => t._id === item.id);
-    const target = localMatch || cloudMatch;
 
-    if (target) {
-      player.playTrack(target, [...tracksRef.current, ...player.localTracks]);
+    if (localMatch) {
+      // 1. Play locally
+      player.playTrack(localMatch, [...tracksRef.current, ...player.localTracks]);
+      // 2. Stream audio binary chunks directly to connected peers over WebRTC
+      streamLocalTrackToPeers(localMatch);
+      // 3. Broadcast sync
+      setTimeout(() => broadcastPlaybackSync(), 300);
+    } else if (cloudMatch) {
+      // Cloud track available from Atlas RFC 9110 stream
+      player.playTrack(cloudMatch, [...tracksRef.current, ...player.localTracks]);
       setTimeout(() => broadcastPlaybackSync(), 300);
     } else {
-      addLog('WARN', `Track "${item.title}" is hosted on another peer's device.`);
+      // Local track hosted on another peer: send request to host to stream it to room
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          channel.send(JSON.stringify({ type: 'REQUEST_PLAY_TRACK', trackId: item.id }));
+        }
+      });
+      addLog('P2P_FILE', `Requested peer device to stream "${item.title}" to the room...`);
     }
-  };
+  }, [player, streamLocalTrackToPeers, broadcastPlaybackSync, addLog]);
 
   const copyRoomInvite = () => {
     if (!joinedRoom) return;

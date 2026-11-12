@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { audioCoordinator } from '../services/audioCoordinator';
 
 function AuthPortal() {
+    const [searchParams] = useSearchParams();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const { login, register, error, isLoading, clearError } = useAuth();
     const navigate = useNavigate();
+
+    const redirectTarget = searchParams.get('redirect') || '/';
+    const isJamInvite = redirectTarget.includes('/session') || searchParams.has('room');
 
     useEffect(() => {
         // Enforce silence upon entering the authentication gateway
@@ -18,13 +22,22 @@ function AuthPortal() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const success = isLogin ? await login(email, password) : await register(email, password);
-        if (success) navigate('/');
+        if (success) {
+            navigate(redirectTarget);
+        }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center w-full relative z-20">
-            <div className="glass-panel p-10 rounded-2xl w-full max-w-md border border-white/10 shadow-2xl animate-fade-in-up">
-                <div className="flex justify-center mb-8">
+        <div className="min-h-screen flex items-center justify-center w-full relative z-20 px-4">
+            <div className="glass-panel p-8 md:p-10 rounded-2xl w-full max-w-md border border-white/10 shadow-2xl animate-fade-in-up">
+                {isJamInvite && (
+                    <div className="mb-6 p-3.5 rounded-xl bg-primary/10 border border-primary/30 text-xs text-primary flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-lg flex-shrink-0">settings_input_antenna</span>
+                        <span>You were invited to a WebRTC Listening Jam. Sign in or register below to join automatically!</span>
+                    </div>
+                )}
+
+                <div className="flex justify-center mb-6">
                     <span className="material-symbols-outlined text-5xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>graphic_eq</span>
                 </div>
                 <h2 className="text-3xl font-bold text-white mb-8 text-center tracking-tight">

@@ -14,11 +14,11 @@ export default function LocalSyncHub() {
   const { localTracks, mountLocalFiles, removeLocalTrack, playTrack, currentTrack, isPlaying } = usePlayer();
   const navigate = useNavigate();
 
-  const handleFiles = (files) => {
+  const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
-    const count = mountLocalFiles(files);
+    const count = await mountLocalFiles(files);
     if (count > 0) {
-      setFeedback(`Successfully mounted ${count} local track${count === 1 ? '' : 's'} in device memory.`);
+      setFeedback(`Successfully mounted ${count} local track${count === 1 ? '' : 's'} with metadata and artwork.`);
     } else {
       setFeedback('No valid audio files detected. Please select MP3, WAV, FLAC, AAC, or OGG.');
     }
@@ -166,8 +166,21 @@ export default function LocalSyncHub() {
                 key={track._id}
                 className="glass-panel flex items-center gap-3.5 rounded-xl p-4 border border-white/10 hover:border-white/20 transition-all bg-[#09090c]/70 hover:bg-white/[0.04]"
               >
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-600 via-blue-700 to-indigo-950 flex items-center justify-center flex-shrink-0 border border-white/10">
-                  <span className="material-symbols-outlined text-primary text-xl">folder_music</span>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-600 via-blue-700 to-indigo-950 overflow-hidden relative flex items-center justify-center flex-shrink-0 border border-white/10 shadow-md">
+                  {track.imageSrc ? (
+                    <img
+                      src={track.imageSrc}
+                      alt={track.title}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <svg className="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                    </svg>
+                  )}
                 </div>
 
                 <div className="min-w-0 flex-1">

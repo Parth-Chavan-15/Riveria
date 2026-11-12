@@ -127,6 +127,9 @@ exports.streamAudio = async (req, res, next) => {
 
       if (fileSize > 0) {
         const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'audio_library' });
+        const gridFsObjectId = mongoose.Types.ObjectId.isValid(track.gridFsId)
+          ? new mongoose.Types.ObjectId(track.gridFsId)
+          : track.gridFsId;
 
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Type', contentType);
@@ -135,7 +138,7 @@ exports.streamAudio = async (req, res, next) => {
         if (!range) {
           res.setHeader('Content-Length', fileSize);
           if (req.method === 'HEAD') return res.status(200).end();
-          return bucket.openDownloadStream(track.gridFsId).on('error', next).pipe(res);
+          return bucket.openDownloadStream(gridFsObjectId).on('error', next).pipe(res);
         }
 
         const match = /^bytes=(\d*)-(\d*)$/.exec(range);
@@ -175,7 +178,7 @@ exports.streamAudio = async (req, res, next) => {
         res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
         res.setHeader('Content-Length', end - start + 1);
         if (req.method === 'HEAD') return res.end();
-        return bucket.openDownloadStream(track.gridFsId, { start, end: end + 1 }).on('error', next).pipe(res);
+        return bucket.openDownloadStream(gridFsObjectId, { start, end: end + 1 }).on('error', next).pipe(res);
       }
     }
 

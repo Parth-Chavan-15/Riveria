@@ -54,6 +54,65 @@ const SECTIONS = [
   },
 ];
 
+// Statically seeded movement tracks for instant 0ms Turn-0 playback
+const STATIC_MOVEMENT_TRACKS = [
+  {
+    _id: '6af537969bb5c204242f3a2b',
+    title: 'Sunflower',
+    artist: 'Post Malone & Swae Lee',
+    duration: '02:38',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950',
+    imageSrc: '/covers/sunflower.png',
+    audioSrc: '/audio/post-malone-sunflower.mp3',
+    audioFile: { filename: 'post-malone-sunflower.mp3', mimeType: 'audio/mpeg' },
+  },
+  {
+    _id: '6af5939f6cb9fb52c4da8997',
+    title: 'Birds',
+    artist: 'Imagine Dragons',
+    duration: '03:39',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
+    imageSrc: '/covers/birds.jpg',
+    audioSrc: '/audio/imagine-dragons-birds.mp3',
+    audioFile: { filename: 'imagine-dragons-birds.mp3', mimeType: 'audio/mpeg' },
+  },
+  {
+    _id: '6af537969bb5c204242f3a2a',
+    title: 'Thunder',
+    artist: 'Imagine Dragons',
+    duration: '03:07',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-purple-600 via-indigo-700 to-zinc-950',
+    imageSrc: '/covers/thunder.jpg',
+    audioSrc: '/audio/imagine-dragons-thunder.mp3',
+    audioFile: { filename: 'imagine-dragons-thunder.mp3', mimeType: 'audio/mpeg' },
+  },
+  {
+    _id: '6af537959bb5c204242f3a29',
+    title: 'Believer',
+    artist: 'Imagine Dragons',
+    duration: '03:24',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
+    imageSrc: '/covers/believer.jpg',
+    audioSrc: '/audio/imagine-dragons-believer.mp3',
+    audioFile: { filename: 'imagine-dragons-believer.mp3', mimeType: 'audio/mpeg' },
+  },
+  {
+    _id: '6af593a16cb9fb52c4da89b4',
+    title: 'Happier',
+    artist: 'Marshmello ft. Bastille',
+    duration: '03:53',
+    type: 'Cloud',
+    imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-zinc-950',
+    imageSrc: '/covers/happier.jpg',
+    audioSrc: '/audio/marshmello-happier.mp3',
+    audioFile: { filename: 'marshmello-happier.mp3', mimeType: 'audio/mpeg' },
+  },
+];
+
 // Smooth Fade-out helper (lowers volume to 0 then pauses) with cancelable epoch
 function fadeOut(audioElem, durationMs = 300, isCurrentTx = () => true) {
   return new Promise((resolve) => {
@@ -148,14 +207,14 @@ export default function LandingPage() {
   const { token } = useAuth();
   const destination = token ? '/' : '/auth';
 
-  // Dynamic Cloud Audio & Playback State
-  const [cloudTracks, setCloudTracks] = useState([]);
+  // Dynamic Cloud Audio & Playback State - Seeded with static movement tracks for instant 0ms start
+  const [cloudTracks, setCloudTracks] = useState(STATIC_MOVEMENT_TRACKS);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(80);
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
-  const [totalDurationFormatted, setTotalDurationFormatted] = useState('00:00');
+  const [totalDurationFormatted, setTotalDurationFormatted] = useState('02:38');
   const [activeSection, setActiveSection] = useState(0);
   const [followScroll, setFollowScroll] = useState(true);
   const [showFloatingDock, setShowFloatingDock] = useState(false);
@@ -163,11 +222,21 @@ export default function LandingPage() {
   // Multi-threaded Audio Pool & References
   const activeAudioRef = useRef(null);
   const audioPoolRef = useRef(new Map());
-  const preloadedBlobsRef = useRef(new Map());
-  const cloudTracksRef = useRef([]);
-  const isTransitioningRef = useRef(false);
+  const cloudTracksRef = useRef(STATIC_MOVEMENT_TRACKS);
   const transitionEpochRef = useRef(0);
   const playTrackDirectRef = useRef(null);
+  const targetSectionIdxRef = useRef(0);
+  const scrollDebounceTimerRef = useRef(null);
+  const isPlayingRef = useRef(false);
+  const currentTrackIndexRef = useRef(0);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    currentTrackIndexRef.current = currentTrackIndex;
+  }, [currentTrackIndex]);
 
   // Helper to ensure at most ONE audio element in the pool is producing sound
   const silenceAllExcept = useCallback((keepAudio = null) => {
@@ -236,61 +305,61 @@ export default function LandingPage() {
 
   const getAudioUrl = useCallback((track) => {
     if (!track) return '';
-    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+    // Prefer direct static asset path for instant 0ms cached response
     if (track.audioSrc) return track.audioSrc;
+    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
     return '';
   }, []);
 
-  // 1. Parallel Multi-Threaded Audio Pre-Fetching & In-Memory Preload
+  // 1. Instant Audio Priming on Mount + Server Metadata Synchronization
   useEffect(() => {
+    // A. Immediately prime HTML5 Audio elements for all 5 movements on Turn 0 (0ms)
+    STATIC_MOVEMENT_TRACKS.forEach((track) => {
+      if (!audioPoolRef.current.has(track._id)) {
+        const audioElem = new Audio();
+        audioElem.preload = 'auto';
+        audioElem.src = track.audioSrc;
+        audioElem.volume = volume / 100;
+        audioElem.load(); // Prime initial byte buffer in browser memory
+        audioPoolRef.current.set(track._id, audioElem);
+        audioCoordinator.register(audioElem);
+      }
+    });
+
+    // B. Background synchronization from MongoDB Atlas
     let active = true;
     apiRequest('/tracks')
       .then((data) => {
-        if (!active) return;
-        const tracksList = Array.isArray(data) ? data : [];
-        const playable = tracksList.filter((t) => t.audioFile?.filename || t.audioSrc);
-        const resolved = playable.length > 0 ? playable : tracksList;
-        setCloudTracks(resolved);
-        cloudTracksRef.current = resolved;
+        if (!active || !Array.isArray(data) || data.length === 0) return;
+        const ordered = SECTIONS.map((sec) => {
+          return data.find((t) => sec.trackPattern.test(t.title)) || null;
+        }).filter(Boolean);
 
-        // Multi-stream parallel preload in background
-        resolved.forEach((track, idx) => {
-          const url = getAudioUrl(track);
-          if (!url) return;
+        if (ordered.length >= 5) {
+          setCloudTracks(ordered);
+          cloudTracksRef.current = ordered;
 
-          // A. Instantiate primed HTML5 Audio elements in memory pool
-          if (!audioPoolRef.current.has(track._id)) {
-            const audioElem = new Audio();
-            audioElem.preload = 'auto';
-            audioElem.src = url;
-            audioElem.volume = volume / 100;
-            audioPoolRef.current.set(track._id, audioElem);
-            audioCoordinator.register(audioElem);
-          }
-
-          // B. Parallel byte-range pre-fetching (first 256KB) for guaranteed 0ms start
-          if (idx < 5 && !preloadedBlobsRef.current.has(track._id)) {
-            fetch(url, { headers: { Range: 'bytes=0-262143' } })
-              .then((res) => (res.ok || res.status === 206 ? res.blob() : null))
-              .then((blob) => {
-                if (blob && active) {
-                  preloadedBlobsRef.current.set(track._id, URL.createObjectURL(blob));
-                }
-              })
-              .catch(() => {});
-          }
-        });
+          ordered.forEach((track) => {
+            const url = track.audioSrc || apiUrl(`/tracks/${track._id}/stream`);
+            if (!audioPoolRef.current.has(track._id)) {
+              const audioElem = new Audio();
+              audioElem.preload = 'auto';
+              audioElem.src = url;
+              audioElem.volume = volume / 100;
+              audioElem.load();
+              audioPoolRef.current.set(track._id, audioElem);
+              audioCoordinator.register(audioElem);
+            }
+          });
+        }
       })
       .catch(() => {});
 
-    const blobCache = preloadedBlobsRef.current;
     return () => {
       active = false;
-      // Cleanup preloaded object URLs
-      blobCache.forEach((blobUrl) => URL.revokeObjectURL(blobUrl));
       stopAllLandingAudio();
     };
-  }, [getAudioUrl, volume, stopAllLandingAudio]);
+  }, [volume, stopAllLandingAudio]);
 
   // Active track object
   const activePiece = cloudTracks[currentTrackIndex] || {
@@ -416,16 +485,34 @@ export default function LandingPage() {
     }
   }, [volume]);
 
-  // Handle Play/Pause
-  const handleTogglePlay = async () => {
+  // Handle Play/Pause with instant cancellation of in-flight fades
+  const handleTogglePlay = useCallback(async () => {
+    transitionEpochRef.current++;
     const current = activeAudioRef.current;
     if (isPlaying && current && !current.paused) {
+      if (current._fadeTimer) {
+        clearInterval(current._fadeTimer);
+        current._fadeTimer = null;
+      }
       current.pause();
       setIsPlaying(false);
     } else {
       await playTrackDirect(currentTrackIndex, true, false);
     }
-  };
+  }, [isPlaying, currentTrackIndex, playTrackDirect]);
+
+  // Spacebar play/pause keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlay();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleTogglePlay]);
 
   // Handle Scrubber Seeking
   const handleSeek = (e) => {
@@ -434,7 +521,7 @@ export default function LandingPage() {
     const clickX = e.clientX - rect.left;
     const pct = Math.min(100, Math.max(0, (clickX / rect.width) * 100));
     setProgress(pct);
-    if (audio && audio.duration && isFinite(audio.duration)) {
+    if (audio && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
       audio.currentTime = (pct / 100) * audio.duration;
     }
   };
@@ -484,7 +571,7 @@ export default function LandingPage() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // 3. Scroll-Driven Section Detection & Musical Transitions
+  // 3. High-Velocity Scroll Detection & Fluid Transition Stabilization
   useEffect(() => {
     const handleScroll = () => {
       setShowFloatingDock(window.scrollY > 350);
@@ -496,45 +583,54 @@ export default function LandingPage() {
   useEffect(() => {
     const observerOptions = {
       root: null,
-      rootMargin: '-20% 0px -25% 0px',
-      threshold: 0.25,
+      rootMargin: '-15% 0px -25% 0px',
+      threshold: [0.15, 0.4, 0.7],
     };
 
     const sectionElements = SECTIONS.map((sec) => document.getElementById(sec.id)).filter(Boolean);
 
     const observer = new IntersectionObserver((entries) => {
+      let bestEntry = null;
+      let maxRatio = 0;
+
       entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const sectionIndex = SECTIONS.findIndex((sec) => sec.id === entry.target.id);
-          if (sectionIndex !== -1 && sectionIndex !== activeSection) {
-            setActiveSection(sectionIndex);
-
-            // Match song to the section vibe:
-            if (followScroll && cloudTracksRef.current.length > 0) {
-              const targetSection = SECTIONS[sectionIndex];
-              let matchedIdx = cloudTracksRef.current.findIndex((t) =>
-                targetSection.trackPattern.test(t.title)
-              );
-              if (matchedIdx === -1) {
-                matchedIdx = sectionIndex % cloudTracksRef.current.length;
-              }
-
-              if (matchedIdx !== currentTrackIndex && !isTransitioningRef.current) {
-                isTransitioningRef.current = true;
-                playTrackDirect(matchedIdx, isPlaying, true);
-                setTimeout(() => {
-                  isTransitioningRef.current = false;
-                }, 900);
-              }
-            }
-          }
+        if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+          maxRatio = entry.intersectionRatio;
+          bestEntry = entry;
         }
       });
+
+      if (bestEntry) {
+        const sectionIndex = SECTIONS.findIndex((sec) => sec.id === bestEntry.target.id);
+        if (sectionIndex !== -1) {
+          setActiveSection(sectionIndex);
+          targetSectionIdxRef.current = sectionIndex;
+
+          if (followScroll) {
+            if (scrollDebounceTimerRef.current) {
+              clearTimeout(scrollDebounceTimerRef.current);
+            }
+
+            // Settle fast scroll velocity so intermediate fling sections don't cause audio thrashing
+            scrollDebounceTimerRef.current = setTimeout(() => {
+              const finalTarget = targetSectionIdxRef.current;
+              if (finalTarget !== currentTrackIndexRef.current) {
+                playTrackDirect(finalTarget, isPlayingRef.current, true);
+              }
+            }, 75);
+          }
+        }
+      }
     }, observerOptions);
 
     sectionElements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [activeSection, followScroll, isPlaying, currentTrackIndex, playTrackDirect]);
+    return () => {
+      if (scrollDebounceTimerRef.current) {
+        clearTimeout(scrollDebounceTimerRef.current);
+      }
+      observer.disconnect();
+    };
+  }, [followScroll, playTrackDirect]);
 
   return (
     <div className="min-h-screen bg-[#09090c] text-[#e5e2e3] font-['Inter',sans-serif] selection:bg-[#a078ff] selection:text-white relative overflow-x-hidden">

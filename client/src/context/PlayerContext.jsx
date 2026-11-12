@@ -125,6 +125,9 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     audio.preload = 'auto';
     audioCoordinator.register(audio);
+    if (typeof window !== 'undefined') {
+      window.__riveriaAudio = audio;
+    }
 
     const onTime = () => setPosition(audio.currentTime || 0);
     const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);

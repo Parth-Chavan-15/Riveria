@@ -71,16 +71,9 @@ app.get('/api/health', (req, res) => {
   const databaseReady = mongoose.connection.readyState === 1;
   res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ok' : 'degraded', database: databaseReady ? 'connected' : 'disconnected' });
 });
-app.get('/health', (req, res) => {
-  const databaseReady = mongoose.connection.readyState === 1;
-  res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ok' : 'degraded', database: databaseReady ? 'connected' : 'disconnected' });
-});
 app.use('/api/tracks', trackRoutes);
-app.use('/tracks', trackRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
 app.use('/api/session', sessionRoutes);
-app.use('/session', sessionRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

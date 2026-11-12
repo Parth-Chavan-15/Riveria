@@ -382,10 +382,20 @@ export function PlayerProvider({ children }) {
       lastAppliedVersionRef.current = incVersion;
     }
 
-    const targetId = trackId || directTrack?._id || directTrack?.id;
+    const targetId = trackId || (typeof directTrack === 'string' ? directTrack : (directTrack?._id || directTrack?.id));
     const allTracks = [...tracks, ...localTracksRef.current];
     const matchedTrack = allTracks.find((item) => (item._id || item.id) === targetId);
-    const track = matchedTrack || directTrack;
+    let track = matchedTrack || (typeof directTrack === 'object' ? directTrack : null);
+    if (!track && targetId) {
+      track = {
+        _id: targetId,
+        id: targetId,
+        title: 'Jam Track',
+        artist: 'Riveria Haven',
+        type: 'Cloud',
+        audioSrc: `/tracks/${targetId}/stream`
+      };
+    }
     if (!track) return;
 
     // Normalize track IDs

@@ -229,6 +229,6 @@ Continuous integration runs automatically on every pull request and push to `mai
 ---
 
 <p align="center">
-  <sub>Crafted for listeners who cherish stillness, craftsmanship, and personal sovereignty.</sub><br />
+  <sub>Crafted for listeners who cherish stillness, pure sound, and the quiet beauty of daydreaming.</sub><br />
   <sub>© 2026 Riveria Music Engine. All rights reserved.</sub>
 </p>

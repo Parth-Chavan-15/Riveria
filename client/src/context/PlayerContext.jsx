@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl } from '../services/api';
+import { audioCoordinator } from '../services/audioCoordinator';
 import { PlayerContext } from './playerContextDef';
 
 function sourceFor(track) {
@@ -22,6 +23,8 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     const audio = audioRef.current;
     audio.preload = 'auto';
+    audioCoordinator.register(audio);
+
     const onTime = () => setPosition(audio.currentTime || 0);
     const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     const onPlay = () => setIsPlaying(true);
@@ -31,13 +34,32 @@ export function PlayerProvider({ children }) {
         setError('This audio track could not be loaded.');
       }
     };
+
+    const handleStopAll = () => {
+      audio.pause();
+      setIsPlaying(false);
+    };
+
+    const handleExclusiveClaimed = (e) => {
+      if (e.detail?.source !== 'player-context') {
+        audio.pause();
+        setIsPlaying(false);
+      }
+    };
+
+    window.addEventListener('reveria:all-audio-stopped', handleStopAll);
+    window.addEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('error', onError);
+
     return () => {
+      audioCoordinator.unregister(audio);
       audio.pause();
+      window.removeEventListener('reveria:all-audio-stopped', handleStopAll);
+      window.removeEventListener('reveria:exclusive-audio-claimed', handleExclusiveClaimed);
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('play', onPlay);
@@ -64,6 +86,7 @@ export function PlayerProvider({ children }) {
       setPosition(0);
     }
     try {
+      audioCoordinator.claimExclusivePlayback(audio, 'player-context');
       await audio.play();
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -77,6 +100,7 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     if (audio.paused) {
       try {
+        audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
       } catch (err) {
         if (err.name !== 'AbortError') {

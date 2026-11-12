@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiRequest, apiUrl } from '../services/api';
+import { audioCoordinator } from '../services/audioCoordinator';
 
 const SECTIONS = [
   {
@@ -53,60 +54,92 @@ const SECTIONS = [
   },
 ];
 
-// Smooth Fade-out helper (lowers volume to 0 then pauses)
-function fadeOut(audioElem, durationMs = 350) {
+// Smooth Fade-out helper (lowers volume to 0 then pauses) with cancelable epoch
+function fadeOut(audioElem, durationMs = 300, isCurrentTx = () => true) {
   return new Promise((resolve) => {
     if (!audioElem || audioElem.paused) {
       if (audioElem) audioElem.volume = 0;
-      return resolve();
+      return resolve(true);
+    }
+    if (audioElem._fadeTimer) {
+      clearInterval(audioElem._fadeTimer);
+      audioElem._fadeTimer = null;
     }
     const startVol = audioElem.volume;
     if (startVol <= 0.01) {
       audioElem.pause();
-      return resolve();
+      audioElem.volume = 0;
+      return resolve(true);
     }
-    const steps = 14;
+    const steps = 12;
     const stepInterval = durationMs / steps;
     let step = 0;
-    const timer = setInterval(() => {
+    audioElem._fadeTimer = setInterval(() => {
+      if (!isCurrentTx()) {
+        clearInterval(audioElem._fadeTimer);
+        audioElem._fadeTimer = null;
+        audioElem.pause();
+        audioElem.volume = 0;
+        return resolve(false);
+      }
       step++;
       const factor = Math.max(0, 1 - step / steps);
       audioElem.volume = startVol * factor;
       if (step >= steps) {
-        clearInterval(timer);
+        clearInterval(audioElem._fadeTimer);
+        audioElem._fadeTimer = null;
         audioElem.pause();
         audioElem.volume = 0;
-        resolve();
+        resolve(true);
       }
     }, stepInterval);
   });
 }
 
-// Smooth Fade-in helper (plays from volume 0 up to target)
-function fadeIn(audioElem, targetVol, durationMs = 450) {
+// Smooth Fade-in helper (plays from volume 0 up to target) with cancelable epoch
+function fadeIn(audioElem, targetVol, durationMs = 400, isCurrentTx = () => true) {
   return new Promise((resolve) => {
-    if (!audioElem) return resolve();
+    if (!audioElem) return resolve(false);
+    if (audioElem._fadeTimer) {
+      clearInterval(audioElem._fadeTimer);
+      audioElem._fadeTimer = null;
+    }
     audioElem.volume = 0;
+    audioCoordinator.claimExclusivePlayback(audioElem, 'landing-page');
+
     audioElem
       .play()
       .then(() => {
-        const steps = 16;
+        if (!isCurrentTx()) {
+          audioElem.pause();
+          audioElem.volume = 0;
+          return resolve(false);
+        }
+        const steps = 14;
         const stepInterval = durationMs / steps;
         let step = 0;
-        const timer = setInterval(() => {
+        audioElem._fadeTimer = setInterval(() => {
+          if (!isCurrentTx()) {
+            clearInterval(audioElem._fadeTimer);
+            audioElem._fadeTimer = null;
+            audioElem.pause();
+            audioElem.volume = 0;
+            return resolve(false);
+          }
           step++;
           const factor = Math.min(1, step / steps);
           audioElem.volume = targetVol * factor;
           if (step >= steps) {
-            clearInterval(timer);
+            clearInterval(audioElem._fadeTimer);
+            audioElem._fadeTimer = null;
             audioElem.volume = targetVol;
-            resolve();
+            resolve(true);
           }
         }, stepInterval);
       })
       .catch((err) => {
         if (err.name !== 'AbortError') console.warn('Fade-in play err:', err);
-        resolve();
+        resolve(false);
       });
   });
 }
@@ -133,7 +166,69 @@ export default function LandingPage() {
   const preloadedBlobsRef = useRef(new Map());
   const cloudTracksRef = useRef([]);
   const isTransitioningRef = useRef(false);
+  const transitionEpochRef = useRef(0);
   const playTrackDirectRef = useRef(null);
+
+  // Helper to ensure at most ONE audio element in the pool is producing sound
+  const silenceAllExcept = useCallback((keepAudio = null) => {
+    audioPoolRef.current.forEach((audio) => {
+      if (audio !== keepAudio) {
+        if (audio._fadeTimer) {
+          clearInterval(audio._fadeTimer);
+          audio._fadeTimer = null;
+        }
+        if (!audio.paused) {
+          audio.pause();
+        }
+        audio.volume = 0;
+      }
+    });
+    if (activeAudioRef.current && activeAudioRef.current !== keepAudio) {
+      if (activeAudioRef.current._fadeTimer) {
+        clearInterval(activeAudioRef.current._fadeTimer);
+        activeAudioRef.current._fadeTimer = null;
+      }
+      if (!activeAudioRef.current.paused) {
+        activeAudioRef.current.pause();
+      }
+      activeAudioRef.current.volume = 0;
+    }
+  }, []);
+
+  // Complete cleanup to stop all audio immediately
+  const stopAllLandingAudio = useCallback(() => {
+    transitionEpochRef.current++;
+    audioCoordinator.stopAll('landing-unmount');
+    silenceAllExcept(null);
+    setIsPlaying(false);
+  }, [silenceAllExcept]);
+
+  // Guaranteed cleanup on unmount, browser back/forward buttons, or external audio takeover
+  useEffect(() => {
+    const onPopState = () => stopAllLandingAudio();
+    const onPageHide = () => stopAllLandingAudio();
+    const onExclusiveClaimed = (e) => {
+      if (e.detail?.source !== 'landing-page') {
+        stopAllLandingAudio();
+      }
+    };
+    const onAllStopped = () => {
+      setIsPlaying(false);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('reveria:exclusive-audio-claimed', onExclusiveClaimed);
+    window.addEventListener('reveria:all-audio-stopped', onAllStopped);
+
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('reveria:exclusive-audio-claimed', onExclusiveClaimed);
+      window.removeEventListener('reveria:all-audio-stopped', onAllStopped);
+      stopAllLandingAudio();
+    };
+  }, [stopAllLandingAudio]);
 
   const [waveAmplitudes, setWaveAmplitudes] = useState([
     24, 42, 68, 55, 88, 70, 95, 82, 60, 75, 48, 30, 65, 80, 52, 34,
@@ -170,6 +265,7 @@ export default function LandingPage() {
             audioElem.src = url;
             audioElem.volume = volume / 100;
             audioPoolRef.current.set(track._id, audioElem);
+            audioCoordinator.register(audioElem);
           }
 
           // B. Parallel byte-range pre-fetching (first 256KB) for guaranteed 0ms start
@@ -192,8 +288,9 @@ export default function LandingPage() {
       active = false;
       // Cleanup preloaded object URLs
       blobCache.forEach((blobUrl) => URL.revokeObjectURL(blobUrl));
+      stopAllLandingAudio();
     };
-  }, [getAudioUrl, volume]);
+  }, [getAudioUrl, volume, stopAllLandingAudio]);
 
   // Active track object
   const activePiece = cloudTracks[currentTrackIndex] || {
@@ -213,20 +310,30 @@ export default function LandingPage() {
       const url = getAudioUrl(targetTrack);
       if (!url) return;
 
+      const txId = ++transitionEpochRef.current;
+      const isCurrentTx = () => transitionEpochRef.current === txId;
+
       let nextAudioElem = audioPoolRef.current.get(targetTrack._id);
       if (!nextAudioElem) {
         nextAudioElem = new Audio();
         nextAudioElem.preload = 'auto';
         nextAudioElem.src = url;
         audioPoolRef.current.set(targetTrack._id, nextAudioElem);
+        audioCoordinator.register(nextAudioElem);
       }
 
       const prevAudio = activeAudioRef.current;
 
       // Sequential Crossfade: Prior audio fades out completely to silence FIRST, then next audio fades in!
       if (shouldCrossfade && prevAudio && !prevAudio.paused && prevAudio !== nextAudioElem) {
-        // Step 1: Smoothly fade out the active track to silence over 350ms
-        await fadeOut(prevAudio, 350);
+        // Step 1: Smoothly fade out the active track to silence
+        await fadeOut(prevAudio, 300, isCurrentTx);
+
+        // If superseded by a newer scroll or click, abort
+        if (!isCurrentTx()) return;
+
+        // Invariant: Force-silence any other lingering audio in pool
+        silenceAllExcept(nextAudioElem);
 
         // Step 2: Switch references once prior audio has stopped
         activeAudioRef.current = nextAudioElem;
@@ -250,15 +357,14 @@ export default function LandingPage() {
           playTrackDirectRef.current?.(nextIdx, true, true);
         };
 
-        // Step 3: Smoothly fade in the new track from silence to master volume over 450ms
-        await fadeIn(nextAudioElem, volume / 100, 450);
-        setIsPlaying(true);
+        // Step 3: Smoothly fade in the new track from silence to master volume
+        const fadeSucceeded = await fadeIn(nextAudioElem, volume / 100, 400, isCurrentTx);
+        if (fadeSucceeded && isCurrentTx()) {
+          setIsPlaying(true);
+        }
       } else {
         // Direct non-crossfade play or same track toggle
-        if (prevAudio && prevAudio !== nextAudioElem) {
-          prevAudio.pause();
-          prevAudio.currentTime = 0;
-        }
+        silenceAllExcept(nextAudioElem);
 
         activeAudioRef.current = nextAudioElem;
         setCurrentTrackIndex(idx);
@@ -282,9 +388,12 @@ export default function LandingPage() {
 
         if (shouldPlay) {
           try {
+            audioCoordinator.claimExclusivePlayback(nextAudioElem, 'landing-page');
             nextAudioElem.volume = volume / 100;
             await nextAudioElem.play();
-            setIsPlaying(true);
+            if (isCurrentTx()) {
+              setIsPlaying(true);
+            }
           } catch (err) {
             if (err.name !== 'AbortError') {
               console.warn('Direct playback notification:', err);
@@ -293,7 +402,7 @@ export default function LandingPage() {
         }
       }
     },
-    [getAudioUrl, volume]
+    [getAudioUrl, volume, silenceAllExcept]
   );
 
   useEffect(() => {
@@ -480,6 +589,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-4">
             <Link
               to={destination}
+              onClick={stopAllLandingAudio}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#d0bcff]/50 text-[#d0bcff] text-xs uppercase tracking-widest font-semibold transition-all duration-300 shadow-[0_0_20px_rgba(160,120,255,0.15)] hover:shadow-[0_0_25px_rgba(160,120,255,0.3)]"
             >
               <span>{token ? 'Open Studio' : 'Enter Riveria'}</span>
@@ -559,6 +669,7 @@ export default function LandingPage() {
 
             <Link
               to={destination}
+              onClick={stopAllLandingAudio}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-[#d0bcff]/40 text-zinc-200 hover:text-white text-xs uppercase tracking-widest font-medium transition-all duration-300 shadow-md"
             >
               <span>{token ? 'Enter Studio' : 'Open Riveria'}</span>
@@ -1060,6 +1171,7 @@ export default function LandingPage() {
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link
                   to={destination}
+                  onClick={stopAllLandingAudio}
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_35px_rgba(160,120,255,0.4)] hover:scale-[1.01]"
                 >
                   <span>{token ? 'Enter Riveria Studio' : 'Step Into Riveria'}</span>

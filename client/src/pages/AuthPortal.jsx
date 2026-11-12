@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { audioCoordinator } from '../services/audioCoordinator';
 
 function AuthPortal() {
     const [isLogin, setIsLogin] = useState(true);
@@ -8,6 +9,11 @@ function AuthPortal() {
     const [password, setPassword] = useState('');
     const { login, register, error, isLoading, clearError } = useAuth();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        // Enforce silence upon entering the authentication gateway
+        audioCoordinator.stopAll('auth-portal-mounted');
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();

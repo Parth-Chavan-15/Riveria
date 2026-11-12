@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { usePlayer } from '../hooks/usePlayer';
 
 function formatTime(seconds) {
@@ -28,10 +29,14 @@ export default function BottomPlayer() {
     error
   } = usePlayer();
 
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPos, setScrubPos] = useState(0);
+
   if (!currentTrack) return null;
 
   const effectiveDuration = duration > 0 ? duration : (currentTrack.durationSeconds || 180);
-  const progressPercent = effectiveDuration > 0 ? (position / effectiveDuration) * 100 : 0;
+  const displayPosition = isScrubbing ? scrubPos : position;
+  const progressPercent = effectiveDuration > 0 ? (displayPosition / effectiveDuration) * 100 : 0;
 
   return (
     <footer
@@ -140,7 +145,7 @@ export default function BottomPlayer() {
 
         {/* Scrubber Row */}
         <div className="w-full flex items-center gap-3 text-xs font-mono text-slate-400">
-          <span className="w-9 text-right select-none">{formatTime(position)}</span>
+          <span className="w-9 text-right select-none">{formatTime(displayPosition)}</span>
           <div className="relative flex-1 flex items-center group cursor-pointer py-1">
             <input
               type="range"
@@ -148,8 +153,16 @@ export default function BottomPlayer() {
               min="0"
               max={effectiveDuration}
               step="0.1"
-              value={Math.min(position, effectiveDuration)}
-              onChange={(e) => seek(Number(e.target.value))}
+              value={Math.min(displayPosition, effectiveDuration)}
+              onPointerDown={(e) => {
+                setIsScrubbing(true);
+                setScrubPos(Number(e.target.value));
+              }}
+              onChange={(e) => setScrubPos(Number(e.target.value))}
+              onPointerUp={(e) => {
+                setIsScrubbing(false);
+                seek(Number(e.target.value));
+              }}
               className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer outline-none accent-primary transition-all group-hover:h-2"
               style={{
                 background: `linear-gradient(to right, rgb(208, 188, 255) ${progressPercent}%, rgba(255, 255, 255, 0.1) ${progressPercent}%)`

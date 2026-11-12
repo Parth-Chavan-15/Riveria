@@ -8,6 +8,7 @@ server/uploads/*
 !server/uploads/.gitkeep
 client/public/audio/*
 !client/public/audio/.gitkeep
+!client/public/audio/*.mp3
 atlas-credentials.env
 
 # Media & Copyrighted audio files

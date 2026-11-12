@@ -62,6 +62,7 @@ export function JamProvider({ children }) {
   const joinedRoomRef = useRef('');
   const isIncomingSyncRef = useRef(false);
   const lastProcessedTimestampRef = useRef(0);
+  const lastPolledVersionRef = useRef(0);
   const localSeqRef = useRef(0);
 
   // Persistent room state restored across route navigation and browser tabs
@@ -478,13 +479,21 @@ export function JamProvider({ children }) {
           });
         }
 
-        // 3. Auto-synchronize playback if pseudo-server holds updated room state
+        // 3. Auto-synchronize playback ONLY when room state version changes or track differs
         if (data.currentPlayback) {
-          handlePlaybackSync({
-            ...data.currentPlayback,
-            roomId: curRoom,
-            currentServerTime: data.serverTime
-          });
+          const incomingVersion = Number(data.currentPlayback.version) || 0;
+          const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
+          const incomingTrackId = data.currentPlayback.trackId || data.currentPlayback.track?._id || data.currentPlayback.track?.id;
+          const isDifferentTrack = Boolean(incomingTrackId && currentTrackId !== incomingTrackId);
+
+          if (incomingVersion > lastPolledVersionRef.current || isDifferentTrack || lastPolledVersionRef.current === 0) {
+            lastPolledVersionRef.current = Math.max(lastPolledVersionRef.current, incomingVersion);
+            handlePlaybackSync({
+              ...data.currentPlayback,
+              roomId: curRoom,
+              currentServerTime: data.serverTime
+            });
+          }
         }
 
         // 4. Detect new peers that we haven't handshaked with
@@ -650,6 +659,8 @@ export function JamProvider({ children }) {
       }).catch(() => {});
 
       playerRef.current?.resetRoomVersion?.(roomToLeave);
+      lastPolledVersionRef.current = 0;
+      lastProcessedTimestampRef.current = 0;
       peersRef.current.forEach((_, id) => closePeer(id));
       setJoinedRoom('');
       setPeersList([]);

@@ -7,10 +7,10 @@ import { extractAudioMetadata } from '../utils/audioMetadata';
 function sourceFor(track) {
   if (!track) return '';
   if (track.localUrl) return track.localUrl;
+  if (track.audioSrc) return track.audioSrc;
   const tid = track._id || track.id;
   if (tid && track.type !== 'Local') return apiUrl(`/tracks/${tid}/stream`);
   if (track.audioFile?.filename && tid) return apiUrl(`/tracks/${tid}/stream`);
-  if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) return track.audioSrc;
   if (tid) return apiUrl(`/tracks/${tid}/stream`);
   return '';
 }
@@ -51,6 +51,7 @@ export function PlayerProvider({ children }) {
   const clockSamplesRef = useRef([]);
   const lastTrackChangeTimeRef = useRef(0);
   const trackLoadingRef = useRef(null);
+  const seekDebounceTimerRef = useRef(null);
 
   const resetRoomVersion = useCallback((roomId) => {
     if (roomId) {
@@ -349,19 +350,22 @@ export function PlayerProvider({ children }) {
     audio.currentTime = target;
     setPosition(target);
 
-    if (!fromSync && currentTrack) {
-      window.dispatchEvent(
-        new CustomEvent('reveria:jam-action', {
-          detail: {
-            action: 'seek',
-            track: currentTrack,
-            isPlaying: !audio.paused,
-            position: target
-          }
-        })
-      );
+    if (!fromSync && currentTrackRef.current) {
+      if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+      seekDebounceTimerRef.current = setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('reveria:jam-action', {
+            detail: {
+              action: 'seek',
+              track: currentTrackRef.current,
+              isPlaying: !audio.paused,
+              position: target
+            }
+          })
+        );
+      }, 60);
     }
-  }, [currentTrack]);
+  }, []);
 
   const mountLocalFiles = useCallback(async (files) => {
     const audioFiles = [...files].filter((file) => file.type.startsWith('audio/') || /\.(mp3|wav|ogg|aac|m4a|flac|webm)$/i.test(file.name));
@@ -580,17 +584,17 @@ export function PlayerProvider({ children }) {
         // Continuous Phase-Locked Loop (PLL) Single-Speaker Engine:
         // Continuously runs on every heartbeat and poll to guarantee <5ms single-speaker lock without stuttering!
         const drift = targetPos - audio.currentTime;
-        const isSeek = action === 'seek' || isNewAction;
+        const isExplicitSeek = action === 'seek';
 
-        if (isSeek || Math.abs(drift) > 1.2) {
-          // Hard snap only on discrete seek or major unrecoverable network drift (>1.2s)
+        if (isExplicitSeek || Math.abs(drift) > 2.5) {
+          // Hard snap ONLY on explicit seek or extreme unrecoverable network lag (>2.5s)
           audio.currentTime = targetPos;
           setPosition(targetPos);
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
           audio.playbackRate = 1.0;
         } else if (Math.abs(drift) > 0.005) {
-          // High-precision acoustic phase micro-nudge (5ms - 1200ms):
-          // Inaudible rate adjustment gently pulls devices into exact phase alignment without looping!
+          // High-precision acoustic phase micro-nudge (5ms - 2500ms):
+          // Inaudible rate adjustment gently pulls devices into exact phase alignment without looping or stream aborts!
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
           const rateAdjustment = Math.max(-0.04, Math.min(0.04, drift * 0.15));
           audio.playbackRate = 1.0 + rateAdjustment;

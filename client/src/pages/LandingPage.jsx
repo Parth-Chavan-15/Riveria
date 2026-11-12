@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   Pause,
@@ -18,10 +18,55 @@ import {
   Compass,
   Feather,
   EyeOff,
-  Music,
+  Headphones,
+  Disc3,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiRequest, apiUrl } from '../services/api';
+
+const ACT_METADATA = [
+  {
+    id: 'prologue',
+    actNumber: 'ACT I',
+    actName: 'The Awakening',
+    accentColor: 'from-amber-500/20 via-orange-500/10 to-transparent',
+    borderColor: 'border-amber-400/30',
+    glowColor: 'rgba(245, 158, 11, 0.25)',
+  },
+  {
+    id: 'philosophy',
+    actNumber: 'ACT II',
+    actName: 'The Sovereign Haven',
+    accentColor: 'from-cyan-500/20 via-blue-500/10 to-transparent',
+    borderColor: 'border-cyan-400/30',
+    glowColor: 'rgba(6, 182, 212, 0.25)',
+  },
+  {
+    id: 'chamber',
+    actNumber: 'ACT III',
+    actName: 'The Living Chamber',
+    accentColor: 'from-purple-500/20 via-indigo-500/10 to-transparent',
+    borderColor: 'border-[#d0bcff]/40',
+    glowColor: 'rgba(208, 188, 255, 0.3)',
+  },
+  {
+    id: 'tenets',
+    actNumber: 'ACT IV',
+    actName: 'Architecture of Restraint',
+    accentColor: 'from-emerald-500/20 via-teal-500/10 to-transparent',
+    borderColor: 'border-emerald-400/30',
+    glowColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  {
+    id: 'horizon',
+    actNumber: 'ACT V',
+    actName: 'The Daydream Horizon',
+    accentColor: 'from-violet-500/20 via-fuchsia-500/10 to-transparent',
+    borderColor: 'border-fuchsia-400/30',
+    glowColor: 'rgba(217, 70, 239, 0.25)',
+  },
+];
 
 export default function LandingPage() {
   const { token } = useAuth();
@@ -35,14 +80,30 @@ export default function LandingPage() {
   const [volume, setVolume] = useState(80);
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
   const [totalDurationFormatted, setTotalDurationFormatted] = useState('00:00');
-  const audioRef = useRef(null);
-  const currentTrackIdRef = useRef(null);
+  const [activeSection, setActiveSection] = useState(0);
+  const [followScroll, setFollowScroll] = useState(true);
+  const [showFloatingDock, setShowFloatingDock] = useState(false);
+
+  // Multi-threaded Audio Pool & References
+  const activeAudioRef = useRef(null);
+  const audioPoolRef = useRef(new Map());
+  const preloadedBlobsRef = useRef(new Map());
   const cloudTracksRef = useRef([]);
+  const isTransitioningRef = useRef(false);
+  const playTrackDirectRef = useRef(null);
+
   const [waveAmplitudes, setWaveAmplitudes] = useState([
     24, 42, 68, 55, 88, 70, 95, 82, 60, 75, 48, 30, 65, 80, 52, 34,
   ]);
 
-  // Fetch real cloud tracks dynamically from database
+  const getAudioUrl = useCallback((track) => {
+    if (!track) return '';
+    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+    if (track.audioSrc) return track.audioSrc;
+    return '';
+  }, []);
+
+  // 1. Parallel Multi-Threaded Audio Pre-Fetching & In-Memory Preload
   useEffect(() => {
     let active = true;
     apiRequest('/tracks')
@@ -50,13 +111,46 @@ export default function LandingPage() {
         if (!active) return;
         const tracksList = Array.isArray(data) ? data : [];
         const playable = tracksList.filter((t) => t.audioFile?.filename || t.audioSrc);
-        setCloudTracks(playable.length > 0 ? playable : tracksList);
+        const resolved = playable.length > 0 ? playable : tracksList;
+        setCloudTracks(resolved);
+        cloudTracksRef.current = resolved;
+
+        // Multi-stream parallel preload in background
+        resolved.forEach((track, idx) => {
+          const url = getAudioUrl(track);
+          if (!url) return;
+
+          // A. Instantiate primed HTML5 Audio elements in memory pool
+          if (!audioPoolRef.current.has(track._id)) {
+            const audioElem = new Audio();
+            audioElem.preload = 'auto';
+            audioElem.src = url;
+            audioElem.volume = volume / 100;
+            audioPoolRef.current.set(track._id, audioElem);
+          }
+
+          // B. Parallel byte-range pre-fetching (first 256KB) for guaranteed 0ms start
+          if (idx < 5 && !preloadedBlobsRef.current.has(track._id)) {
+            fetch(url, { headers: { Range: 'bytes=0-262143' } })
+              .then((res) => (res.ok || res.status === 206 ? res.blob() : null))
+              .then((blob) => {
+                if (blob && active) {
+                  preloadedBlobsRef.current.set(track._id, URL.createObjectURL(blob));
+                }
+              })
+              .catch(() => {});
+          }
+        });
       })
       .catch(() => {});
+
+    const blobCache = preloadedBlobsRef.current;
     return () => {
       active = false;
+      // Cleanup preloaded object URLs
+      blobCache.forEach((blobUrl) => URL.revokeObjectURL(blobUrl));
     };
-  }, []);
+  }, [getAudioUrl, volume]);
 
   // Active track object
   const activePiece = cloudTracks[currentTrackIndex] || {
@@ -67,103 +161,126 @@ export default function LandingPage() {
     imageColor: 'bg-gradient-to-br from-[#201735] via-[#161226] to-[#0e0e0f]',
   };
 
-  const getAudioUrl = (track) => {
-    if (!track) return '';
-    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
-    if (track.audioSrc) return track.audioSrc;
-    return '';
-  };
+  // 2. Playback Lifecycle Manager
+  const playTrackDirect = useCallback(
+    async (idx, shouldPlay = true, fadeIn = false) => {
+      const targetTrack = cloudTracksRef.current[idx];
+      if (!targetTrack) return;
+
+      const url = getAudioUrl(targetTrack);
+      if (!url) return;
+
+      let audioElem = audioPoolRef.current.get(targetTrack._id);
+      if (!audioElem) {
+        audioElem = new Audio();
+        audioElem.preload = 'auto';
+        audioElem.src = url;
+        audioPoolRef.current.set(targetTrack._id, audioElem);
+      }
+
+      // Detach listeners from previous audio if switching
+      const prevAudio = activeAudioRef.current;
+      if (prevAudio && prevAudio !== audioElem) {
+        if (fadeIn && !prevAudio.paused) {
+          // Smooth crossfade out over 150ms
+          const startVol = prevAudio.volume;
+          const fadeSteps = 8;
+          for (let step = 1; step <= fadeSteps; step++) {
+            setTimeout(() => {
+              try {
+                prevAudio.volume = Math.max(0, startVol * (1 - step / fadeSteps));
+                if (step === fadeSteps) {
+                  prevAudio.pause();
+                  prevAudio.currentTime = 0;
+                }
+              } catch {
+                /* noop */
+              }
+            }, step * 18);
+          }
+        } else {
+          prevAudio.pause();
+        }
+      }
+
+      activeAudioRef.current = audioElem;
+      setCurrentTrackIndex(idx);
+
+      // Event attachments
+      audioElem.ontimeupdate = () => {
+        if (audioElem.duration && isFinite(audioElem.duration)) {
+          setProgress((audioElem.currentTime / audioElem.duration) * 100);
+          const curMins = Math.floor(audioElem.currentTime / 60);
+          const curSecs = Math.floor(audioElem.currentTime % 60);
+          setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
+          const durMins = Math.floor(audioElem.duration / 60);
+          const durSecs = Math.floor(audioElem.duration % 60);
+          setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
+        }
+      };
+
+      audioElem.onended = () => {
+        const nextIdx = (idx + 1) % (cloudTracksRef.current.length || 1);
+        playTrackDirectRef.current?.(nextIdx, true, true);
+      };
+
+      if (shouldPlay) {
+        try {
+          if (fadeIn) {
+            audioElem.volume = 0;
+            await audioElem.play();
+            setIsPlaying(true);
+            const targetVol = volume / 100;
+            const fadeSteps = 10;
+            for (let step = 1; step <= fadeSteps; step++) {
+              setTimeout(() => {
+                try {
+                  audioElem.volume = (targetVol * step) / fadeSteps;
+                } catch {
+                  /* noop */
+                }
+              }, step * 25);
+            }
+          } else {
+            audioElem.volume = volume / 100;
+            await audioElem.play();
+            setIsPlaying(true);
+          }
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.warn('Direct playback notification:', err);
+          }
+        }
+      }
+    },
+    [getAudioUrl, volume]
+  );
+
+  useEffect(() => {
+    playTrackDirectRef.current = playTrackDirect;
+  }, [playTrackDirect]);
 
   // Synchronize audio volume
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume / 100;
+    if (activeAudioRef.current) {
+      activeAudioRef.current.volume = volume / 100;
     }
   }, [volume]);
 
-  // Synchronize audio element lifecycle once on mount
-  useEffect(() => {
-    const audio = new Audio();
-    audioRef.current = audio;
-    audio.volume = 0.8;
-    audio.preload = 'metadata';
-
-    const onTime = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setProgress((audio.currentTime / audio.duration) * 100);
-        const curMins = Math.floor(audio.currentTime / 60);
-        const curSecs = Math.floor(audio.currentTime % 60);
-        setCurrentTimeFormatted(`${String(curMins).padStart(2, '0')}:${String(curSecs).padStart(2, '0')}`);
-        const durMins = Math.floor(audio.duration / 60);
-        const durSecs = Math.floor(audio.duration % 60);
-        setTotalDurationFormatted(`${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`);
-      }
-    };
-
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => {
-      setIsPlaying(false);
-      setCurrentTrackIndex((prev) => (prev + 1) % (cloudTracksRef.current.length || 1));
-    };
-
-    audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('play', onPlay);
-    audio.addEventListener('pause', onPause);
-    audio.addEventListener('ended', onEnded);
-
-    return () => {
-      audio.pause();
-      audio.src = '';
-      audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('play', onPlay);
-      audio.removeEventListener('pause', onPause);
-      audio.removeEventListener('ended', onEnded);
-    };
-  }, []);
-
-  // Pre-assign first track when cloud tracks load so first click is instantaneous
-  useEffect(() => {
-    cloudTracksRef.current = cloudTracks;
-    if (cloudTracks.length > 0 && audioRef.current && !currentTrackIdRef.current) {
-      const firstTrack = cloudTracks[0];
-      const url = getAudioUrl(firstTrack);
-      if (url) {
-        audioRef.current.src = url;
-        currentTrackIdRef.current = firstTrack._id;
-        audioRef.current.load();
-      }
-    }
-  }, [cloudTracks]);
-
   // Handle Play/Pause
   const handleTogglePlay = async () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const streamUrl = getAudioUrl(activePiece);
-    if (!streamUrl) return;
-
-    if (isPlaying && !audio.paused) {
-      audio.pause();
+    const current = activeAudioRef.current;
+    if (isPlaying && current && !current.paused) {
+      current.pause();
+      setIsPlaying(false);
     } else {
-      if (currentTrackIdRef.current !== activePiece._id || !audio.src) {
-        audio.src = streamUrl;
-        currentTrackIdRef.current = activePiece._id;
-        audio.load();
-      }
-      try {
-        await audio.play();
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.warn('Playback error:', err);
-        }
-      }
+      await playTrackDirect(currentTrackIndex, true, false);
     }
   };
 
   // Handle Scrubber Seeking
   const handleSeek = (e) => {
-    const audio = audioRef.current;
+    const audio = activeAudioRef.current;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const pct = Math.min(100, Math.max(0, (clickX / rect.width) * 100));
@@ -173,30 +290,9 @@ export default function LandingPage() {
     }
   };
 
-  // Handle Volume Change
-  const handleVolumeChange = (newVol) => {
-    setVolume(newVol);
-    if (audioRef.current) {
-      audioRef.current.volume = newVol / 100;
-    }
-  };
-
-  // Switch Track
+  // Switch Track manually
   const handleSelectTrack = (idx) => {
-    setCurrentTrackIndex(idx);
-    const selected = cloudTracks[idx];
-    const audio = audioRef.current;
-    if (audio && selected) {
-      const url = getAudioUrl(selected);
-      if (url) {
-        audio.src = url;
-        currentTrackIdRef.current = selected._id;
-        audio.load();
-        audio.play().then(() => setIsPlaying(true)).catch((err) => {
-          if (err.name !== 'AbortError') console.warn('Track switch playback error:', err);
-        });
-      }
-    }
+    playTrackDirect(idx, isPlaying, true);
   };
 
   const handlePrevTrack = () => {
@@ -212,8 +308,8 @@ export default function LandingPage() {
   };
 
   const handleRestartTrack = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
+    if (activeAudioRef.current) {
+      activeAudioRef.current.currentTime = 0;
       setProgress(0);
       setCurrentTimeFormatted('00:00');
     }
@@ -228,7 +324,7 @@ export default function LandingPage() {
     handleSelectTrack(randomIdx);
   };
 
-  // Subtle breathing equalizer wave
+  // Dynamic visualizer frequencies
   useEffect(() => {
     if (!isPlaying) return undefined;
     const interval = setInterval(() => {
@@ -239,20 +335,66 @@ export default function LandingPage() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
+  // 3. Scroll-Driven Section Detection & Musical Transitions
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingDock(window.scrollY > 350);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const observerOptions = {
+      root: null,
+      rootMargin: '-20% 0px -25% 0px',
+      threshold: 0.25,
+    };
+
+    const sectionElements = ACT_METADATA.map((act) => document.getElementById(act.id)).filter(Boolean);
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const actIndex = ACT_METADATA.findIndex((act) => act.id === entry.target.id);
+          if (actIndex !== -1 && actIndex !== activeSection) {
+            setActiveSection(actIndex);
+
+            // If user has enabled Follow Scroll, seamlessly crossfade to that section's track!
+            if (followScroll && cloudTracksRef.current.length > 0) {
+              const targetIdx = actIndex % cloudTracksRef.current.length;
+              if (targetIdx !== currentTrackIndex && !isTransitioningRef.current) {
+                isTransitioningRef.current = true;
+                playTrackDirect(targetIdx, isPlaying, true);
+                setTimeout(() => {
+                  isTransitioningRef.current = false;
+                }, 600);
+              }
+            }
+          }
+        }
+      });
+    }, observerOptions);
+
+    sectionElements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [activeSection, followScroll, isPlaying, currentTrackIndex, playTrackDirect]);
+
   return (
-    <div className="min-h-screen bg-[#0e0e0f] text-[#e5e2e3] font-['Inter',sans-serif] selection:bg-[#a078ff] selection:text-white relative overflow-x-hidden">
-      {/* Luminous Atmospheric Veils */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute -top-[20%] left-1/2 -translate-x-1/2 w-[80vw] max-w-[1000px] h-[650px] bg-gradient-to-b from-[#d0bcff]/10 via-[#a078ff]/5 to-transparent rounded-full blur-[140px]" />
+    <div className="min-h-screen bg-[#0a0a0f] text-[#e5e2e3] font-['Inter',sans-serif] selection:bg-[#a078ff] selection:text-white relative overflow-x-hidden">
+      {/* Dynamic Atmospheric Veils that morph as the user journeys down the page */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden transition-all duration-1000">
+        <div
+          className={`absolute -top-[20%] left-1/2 -translate-x-1/2 w-[85vw] max-w-[1100px] h-[700px] bg-gradient-to-b ${ACT_METADATA[activeSection]?.accentColor || 'from-[#d0bcff]/10 via-[#a078ff]/5 to-transparent'} rounded-full blur-[140px] transition-all duration-1000`}
+        />
         <div className="absolute top-[35%] -right-32 w-[600px] h-[600px] bg-[#8fcdff]/5 rounded-full blur-[160px]" />
         <div className="absolute top-[65%] -left-32 w-[650px] h-[650px] bg-[#fbabff]/5 rounded-full blur-[160px]" />
         <div className="absolute bottom-0 right-1/4 w-[700px] h-[500px] bg-[#d0bcff]/6 rounded-full blur-[150px]" />
       </div>
 
-      {/* Navigation */}
-      <header className="fixed top-0 left-0 w-full z-50 bg-[#0e0e0f]/80 backdrop-blur-2xl border-b border-white/5">
+      {/* Navigation Header */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-[#0a0a0f]/80 backdrop-blur-2xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 h-20 flex items-center justify-between">
-          {/* Logo using product identity */}
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 rounded-full border border-white/10 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)] transition-transform duration-300 group-hover:scale-105">
               <span className="material-symbols-outlined text-black font-semibold text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -267,23 +409,23 @@ export default function LandingPage() {
             </div>
           </Link>
 
-          {/* Navigation Anchors */}
-          <nav className="hidden md:flex items-center gap-8 text-xs tracking-widest uppercase text-zinc-400">
-            <a href="#prologue" className="hover:text-[#d0bcff] transition-colors duration-200">
-              Prologue
-            </a>
-            <a href="#chamber" className="hover:text-[#d0bcff] transition-colors duration-200">
-              The Chamber
-            </a>
-            <a href="#tenets" className="hover:text-[#d0bcff] transition-colors duration-200">
-              Principles
-            </a>
-            <a href="#horizon" className="hover:text-[#d0bcff] transition-colors duration-200">
-              The Horizon
-            </a>
+          <nav className="hidden md:flex items-center gap-7 text-xs tracking-widest uppercase text-zinc-400 font-mono">
+            {ACT_METADATA.map((act, idx) => (
+              <a
+                key={act.id}
+                href={`#${act.id}`}
+                className={`transition-all duration-300 flex items-center gap-1.5 ${
+                  activeSection === idx
+                    ? 'text-[#d0bcff] font-semibold drop-shadow-[0_0_8px_rgba(208,188,255,0.4)]'
+                    : 'hover:text-zinc-200'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${activeSection === idx ? 'bg-[#d0bcff]' : 'bg-transparent'}`} />
+                <span>{act.actName}</span>
+              </a>
+            ))}
           </nav>
 
-          {/* Action Call */}
           <div className="flex items-center gap-4">
             <Link
               to={destination}
@@ -298,25 +440,25 @@ export default function LandingPage() {
 
       {/* Main Experience */}
       <main className="w-full pt-20">
-        {/* PROLOGUE: Hero Section */}
+        {/* ACT I: PROLOGUE / THE OVERTURE */}
         <section
           id="prologue"
-          className="relative max-w-5xl mx-auto px-6 sm:px-8 pt-20 pb-28 text-center flex flex-col items-center"
+          className="relative min-h-[90vh] max-w-5xl mx-auto px-6 sm:px-8 pt-20 pb-28 text-center flex flex-col items-center justify-center"
         >
-          {/* Absolute Engine Status Badge */}
+          {/* Section Indicator Badge */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#201f20]/60 border border-white/10 backdrop-blur-xl text-xs font-mono text-[#d0bcff] mb-8"
+            className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#1b1924]/80 border border-[#d0bcff]/20 backdrop-blur-xl text-xs font-mono text-[#d0bcff] mb-8 shadow-[0_0_20px_rgba(208,188,255,0.15)]"
           >
-            <Sparkles className="w-3 h-3 text-[#fbabff]" />
-            <span className="tracking-widest uppercase font-semibold">Riveria Engine</span>
+            <Sparkles className="w-3.5 h-3.5 text-[#fbabff]" />
+            <span className="tracking-widest uppercase font-semibold">ACT I • The Overture</span>
             <span className="text-zinc-600">•</span>
-            <span className="text-zinc-300">High-Fidelity Sound Architecture</span>
+            <span className="text-zinc-300">High-Fidelity Audio Engine</span>
           </motion.div>
 
-          {/* Monolithic Literary Headline */}
+          {/* Literary Headline */}
           <motion.h1
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -326,7 +468,7 @@ export default function LandingPage() {
             Where sound dissolves into memory.{' '}
             <br className="hidden sm:inline" />
             <span className="font-serif italic text-[#d0bcff] font-normal">
-              An audiophile sanctuary for unhurried thought.
+              An unhurried haven for the daydreamer.
             </span>
           </motion.h1>
 
@@ -337,70 +479,104 @@ export default function LandingPage() {
             transition={{ duration: 0.9, delay: 0.2 }}
             className="mt-8 text-base sm:text-lg text-zinc-300 max-w-2xl font-light leading-relaxed"
           >
-            In a modern landscape crowded with algorithmic clamor, commercial feeds, and ephemeral trends, Riveria is built as an unhurried harbor. Mount your personal archives, share quiet sessions with companions across distances, and let your thoughts drift.
+            In a digital world crowded with algorithmic clamor, intrusive recommendations, and ephemeral noise, Riveria is built as an unhurried harbor. Mount your personal archives, share quiet sessions with companions across distances, and let your thoughts drift.
           </motion.p>
 
-          {/* Elegant Invitations */}
+          {/* Interactive Hero Action Deck */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, delay: 0.3 }}
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md"
+            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-lg"
           >
+            {/* Quick-play Sound Tour CTA */}
+            <button
+              onClick={handleTogglePlay}
+              className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_35px_rgba(160,120,255,0.4)] hover:scale-[1.02] active:scale-95"
+            >
+              {isPlaying ? (
+                <>
+                  <Pause className="w-4 h-4 fill-current text-white" />
+                  <span>Pause Overture</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current ml-0.5 text-white" />
+                  <span>Experience Sound Tour</span>
+                </>
+              )}
+            </button>
+
             <Link
               to={destination}
-              className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_30px_rgba(160,120,255,0.35)] hover:scale-[1.01]"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#d0bcff]/40 text-zinc-200 hover:text-white text-xs uppercase tracking-widest font-medium transition-all duration-300 shadow-md"
             >
-              <span>{token ? 'Continue Listening' : 'Enter Riveria Studio'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>{token ? 'Enter Studio' : 'Open Riveria'}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-[#d0bcff]" />
             </Link>
-            <a
-              href="#chamber"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 text-zinc-300 hover:text-white text-xs uppercase tracking-widest font-medium transition-all duration-300"
-            >
-              <Music className="w-3.5 h-3.5 text-[#d0bcff]" />
-              <span>Listen to the Tone</span>
-            </a>
           </motion.div>
 
-          {/* Quiet Trust Notes */}
+          {/* Real-time Audio Visualizer Pulse in Hero */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.4 }}
-            className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-zinc-500 font-mono tracking-wider"
+            className="mt-12 flex items-center justify-center gap-1.5 h-8 px-6 py-2 rounded-full bg-black/40 border border-white/10"
           >
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#d0bcff]" /> Local Files Stay Sovereign
+            <Headphones className="w-3.5 h-3.5 text-[#d0bcff] mr-2" />
+            <span className="text-[11px] font-mono text-zinc-400 mr-3">
+              {isPlaying ? 'Now Playing: Sunflower' : 'Scroll down to travel across soundscapes'}
             </span>
-            <span>•</span>
-            <span>Zero Tracking Telemetry</span>
-            <span>•</span>
-            <span>Direct WebRTC Mesh</span>
+            {waveAmplitudes.slice(0, 10).map((amp, idx) => (
+              <motion.span
+                key={idx}
+                animate={{ height: isPlaying ? `${Math.max(15, amp * 0.28)}px` : '4px' }}
+                transition={{ duration: 0.25 }}
+                className="w-1 bg-[#d0bcff] rounded-full inline-block"
+              />
+            ))}
           </motion.div>
         </section>
 
-        {/* ACT I: THE QUIET HARBOR (Narrative Philosophy) */}
-        <section className="py-24 border-y border-white/5 bg-[#131314]/50 relative">
+        {/* ACT II: THE PHILOSOPHY OF REVERIE */}
+        <section
+          id="philosophy"
+          className="py-28 border-y border-white/5 bg-[#0e0e14]/60 relative transition-colors duration-1000"
+        >
           <div className="max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
-            <div className="max-w-2xl mb-16">
-              <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono">
-                The Philosophy
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight mt-2">
-                Reclaiming music from the noise.
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-100px' }}
+              transition={{ duration: 0.8 }}
+              className="max-w-2xl mb-16"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-mono font-semibold">
+                  ACT II • The Sovereign Haven
+                </span>
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              </div>
+              <h2 className="text-3xl sm:text-5xl font-light text-white tracking-tight">
+                Reclaiming sound from algorithmic noise.
               </h2>
-              <p className="mt-4 text-sm text-zinc-400 font-light leading-relaxed">
+              <p className="mt-4 text-sm sm:text-base text-zinc-400 font-light leading-relaxed">
                 Music was never meant to feel like an endless administrative queue of recommendations or an ad-saturated marketplace. We shaped Riveria around three timeless convictions.
               </p>
-            </div>
+            </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Conviction 1 */}
-              <div className="p-8 rounded-2xl bg-[#201f20]/40 border border-white/5 flex flex-col justify-between group hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Pillar 1 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-cyan-400/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
+              >
                 <div>
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] mb-6">
-                    <HardDrive className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-300 mb-6 group-hover:scale-110 transition-transform">
+                    <HardDrive className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-medium text-white mb-3">
                     Sovereign Belonging
@@ -409,34 +585,48 @@ export default function LandingPage() {
                     The unreleased acoustic sketch, the vinyl rip discovered on a cold November evening—these belong to you, not a corporate database. Riveria mounts audio files straight from your device into your browser session without uploading a single byte to an external server.
                   </p>
                 </div>
-                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-[#d0bcff]">
-                  In-Memory Browser Mounting
+                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-cyan-400 flex items-center justify-between">
+                  <span>Zero Server Uploads</span>
+                  <span>In-Memory RAM</span>
                 </div>
-              </div>
+              </motion.div>
 
-              {/* Conviction 2 */}
-              <div className="p-8 rounded-2xl bg-[#201f20]/40 border border-white/5 flex flex-col justify-between group hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Pillar 2 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-[#d0bcff]/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
+              >
                 <div>
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] mb-6">
-                    <Radio className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-400/20 flex items-center justify-center text-[#d0bcff] mb-6 group-hover:scale-110 transition-transform">
+                    <Radio className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-medium text-white mb-3">
                     Shared Resonance
                   </h3>
                   <p className="text-xs sm:text-sm text-zinc-400 font-light leading-relaxed">
-                    Listening with a friend across oceans should feel as natural as sitting side by side in the same room. With direct WebRTC peer data channels, when you pause or scrub, their player responds at the exact same millisecond—free from cloud relay delays.
+                    Listening with a companion across oceans should feel as natural as sitting side by side in the same room. With direct WebRTC peer data channels, when you pause or scrub, their player responds at the exact same millisecond—free from cloud relay delays.
                   </p>
                 </div>
-                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-[#d0bcff]">
-                  Peer-to-Peer DataChannels
+                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-[#d0bcff] flex items-center justify-between">
+                  <span>Sub-50ms Latency</span>
+                  <span>Direct WebRTC</span>
                 </div>
-              </div>
+              </motion.div>
 
-              {/* Conviction 3 */}
-              <div className="p-8 rounded-2xl bg-[#201f20]/40 border border-white/5 flex flex-col justify-between group hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Pillar 3 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="p-8 rounded-2xl bg-[#14141d]/70 border border-white/5 flex flex-col justify-between group hover:border-emerald-400/40 hover:bg-[#161624] transition-all duration-500 shadow-lg"
+              >
                 <div>
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] mb-6">
-                    <Waves className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-300 mb-6 group-hover:scale-110 transition-transform">
+                    <Waves className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-medium text-white mb-3">
                     Unbroken Stillness
@@ -445,77 +635,91 @@ export default function LandingPage() {
                     Audio streams in delicate byte-range chunks that honor the natural dynamics of the recording. No banner promotions, no algorithmic interruptions—just the quiet cadence of the sound moving at your chosen pace.
                   </p>
                 </div>
-                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-[#d0bcff]">
-                  RFC 9110 Byte-Range Slicing
+                <div className="mt-8 pt-4 border-t border-white/5 text-[11px] font-mono text-emerald-400 flex items-center justify-between">
+                  <span>RFC 9110 Chunks</span>
+                  <span>Pure Fidelity</span>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </section>
 
-        {/* ACT II: THE CHAMBER (Interactive Audio Sanctuary) */}
+        {/* ACT III: THE LIVING CHAMBER (Fluid Master Deck) */}
         <section id="chamber" className="py-28 relative">
           <div className="max-w-5xl mx-auto px-6 sm:px-8">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono">
-                The Living Instrument
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight mt-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-100px' }}
+              transition={{ duration: 0.8 }}
+              className="text-center max-w-2xl mx-auto mb-16"
+            >
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#1b1928] border border-[#d0bcff]/30 text-xs font-mono text-[#d0bcff] mb-3">
+                <Disc3 className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+                <span>ACT III • The Living Instrument</span>
+              </div>
+              <h2 className="text-3xl sm:text-5xl font-light text-white tracking-tight">
                 Step inside the listening chamber.
               </h2>
               <p className="mt-3 text-sm text-zinc-400 font-light">
-                A live, responsive console showcasing Riveria's fluid audio deck, ambient wave visualizer, and instant multi-source streaming.
+                A live, responsive console showcasing Riveria&apos;s fluid audio deck, ambient wave visualizer, and instant multi-source streaming.
               </p>
-            </div>
+            </motion.div>
 
             {/* Glassmorphic Player Deck */}
-            <div className="rounded-3xl bg-[#1c1b1c]/70 backdrop-blur-3xl border border-white/10 p-6 sm:p-10 shadow-[0_30px_80px_rgba(0,0,0,0.8)] relative overflow-hidden">
-              {/* Dynamic subtle ambient glow behind deck */}
-              <div
-                className="absolute inset-0 bg-gradient-to-br from-[#201735]/40 via-[#161226]/40 to-[#0e0e0f] opacity-40 transition-colors duration-1000 -z-10"
-              />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7 }}
+              className="rounded-3xl bg-[#14131c]/80 backdrop-blur-3xl border border-[#d0bcff]/20 p-6 sm:p-10 shadow-[0_30px_90px_rgba(0,0,0,0.85)] relative overflow-hidden"
+            >
+              {/* Dynamic ambient background glow */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#201735]/40 via-[#161226]/40 to-[#0e0e0f] opacity-50 -z-10" />
 
               {/* Deck Topline */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-6">
                 <div className="flex items-center gap-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-[#d0bcff] animate-pulse' : 'bg-zinc-600'}`} />
                   <span className="text-xs font-mono uppercase tracking-widest text-[#d0bcff]">
-                    Chamber Monitor • {isPlaying ? 'Streaming Cloud Audio' : 'Ready'}
+                    Chamber Monitor • {isPlaying ? 'Live Cloud Streaming' : 'Ready'}
                   </span>
                 </div>
-                <span className="text-xs font-mono text-zinc-400 bg-white/[0.03] px-3 py-1 rounded-full border border-white/5">
-                  {activePiece.type ? `${activePiece.type} Audio` : 'Cloud Stream'}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-zinc-400 bg-white/[0.04] px-3 py-1 rounded-full border border-white/5">
+                    {activePiece.type ? `${activePiece.type} Audio` : 'Cloud Stream'}
+                  </span>
+                </div>
               </div>
 
               {/* Main Deck Interior */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-8 items-center">
                 {/* Artwork & Rotating Vinyl Core */}
                 <div className="lg:col-span-5 flex flex-col items-center sm:items-start">
-                  <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl bg-[#0e0e0f] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl group">
+                  <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl bg-[#0e0e14] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl group">
                     {activePiece.imageSrc ? (
                       <div className="absolute inset-0">
                         <img
                           src={activePiece.imageSrc}
                           alt={activePiece.title}
-                          className="w-full h-full object-cover opacity-35 scale-105 blur-[1px] group-hover:scale-110 transition-transform duration-700"
+                          className="w-full h-full object-cover opacity-40 scale-105 blur-[1px] group-hover:scale-110 transition-transform duration-700"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/60" />
                       </div>
                     ) : null}
                     <motion.div
                       animate={{ rotate: isPlaying ? 360 : 0 }}
-                      transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                      className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-white/10 bg-gradient-to-tr from-[#1b1528] to-[#0e0e0f] flex items-center justify-center shadow-inner relative z-10 backdrop-blur-xs"
+                      transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+                      className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-white/10 bg-gradient-to-tr from-[#1b1528] to-[#0e0e14] flex items-center justify-center shadow-inner relative z-10 backdrop-blur-xs"
                     >
-                      <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_15px_rgba(208,188,255,0.4)]">
+                      <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_20px_rgba(208,188,255,0.4)]">
                         <span className="material-symbols-outlined text-black text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
                           graphic_eq
                         </span>
                       </div>
                     </motion.div>
-                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/80 uppercase tracking-widest relative z-10">
-                      Aura Console
+                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/90 uppercase tracking-widest relative z-10 bg-black/50 px-2 py-0.5 rounded">
+                      Chamber Deck
                     </div>
                   </div>
                 </div>
@@ -524,7 +728,7 @@ export default function LandingPage() {
                 <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
                   <div>
                     <span className="text-xs font-serif italic text-[#d0bcff]">
-                      {activePiece.genre || 'Master Audio Stream'}
+                      Master Track #{currentTrackIndex + 1}
                     </span>
                     <h3 className="text-2xl sm:text-3xl font-light text-white tracking-tight mt-1 truncate">
                       {activePiece.title}
@@ -533,7 +737,7 @@ export default function LandingPage() {
                       {activePiece.artist || 'Riveria Cloud Archives'}
                     </p>
                     <p className="text-xs text-zinc-500 italic mt-2">
-                      “{activePiece.album ? `Album: ${activePiece.album}` : 'Direct RFC 9110 byte-range cloud audio streaming'}”
+                      “Direct RFC 9110 byte-range chunk streaming with zero-buffer latency”
                     </p>
                   </div>
 
@@ -564,7 +768,9 @@ export default function LandingPage() {
                     </div>
                     <div className="flex justify-between text-[11px] font-mono text-zinc-500">
                       <span>{currentTimeFormatted}</span>
-                      <span className="text-[#d0bcff]">{totalDurationFormatted !== '00:00' ? totalDurationFormatted : (activePiece.duration || '03:20')}</span>
+                      <span className="text-[#d0bcff]">
+                        {totalDurationFormatted !== '00:00' ? totalDurationFormatted : (activePiece.duration || '03:20')}
+                      </span>
                     </div>
                   </div>
 
@@ -587,7 +793,7 @@ export default function LandingPage() {
                       </button>
                       <button
                         onClick={handleTogglePlay}
-                        className="w-11 h-11 rounded-full bg-[#d0bcff] hover:bg-[#e9ddff] text-black flex items-center justify-center transition-all transform active:scale-95 shadow-[0_0_20px_rgba(208,188,255,0.4)]"
+                        className="w-12 h-12 rounded-full bg-[#d0bcff] hover:bg-[#e9ddff] text-black flex items-center justify-center transition-all transform active:scale-95 shadow-[0_0_25px_rgba(208,188,255,0.45)]"
                         title={isPlaying ? 'Pause' : 'Play'}
                       >
                         {isPlaying ? (
@@ -620,7 +826,7 @@ export default function LandingPage() {
                         min="0"
                         max="100"
                         value={volume}
-                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                        onChange={(e) => setVolume(Number(e.target.value))}
                         className="w-20 sm:w-24 accent-[#d0bcff] h-1 rounded-full cursor-pointer bg-white/10"
                       />
                       <span className="text-[10px] font-mono text-zinc-400">{volume}%</span>
@@ -629,7 +835,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Cloud Tracks Selector Switcher */}
+              {/* Dynamic Cloud Tracks Selector Pills */}
               <div className="pt-6 border-t border-white/5 flex flex-wrap gap-2">
                 {cloudTracks.length === 0 ? (
                   <span className="text-xs font-mono text-zinc-500 italic">Syncing cloud library tracks...</span>
@@ -640,60 +846,81 @@ export default function LandingPage() {
                       onClick={() => handleSelectTrack(idx)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 ${
                         currentTrackIndex === idx
-                          ? 'bg-[#d0bcff]/15 text-[#d0bcff] border border-[#d0bcff]/40 shadow-[0_0_15px_rgba(208,188,255,0.2)]'
+                          ? 'bg-[#d0bcff]/20 text-[#d0bcff] border border-[#d0bcff]/50 shadow-[0_0_15px_rgba(208,188,255,0.25)]'
                           : 'bg-white/[0.02] text-zinc-400 border border-white/5 hover:border-white/20 hover:text-zinc-200'
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      <span className={`w-1.5 h-1.5 rounded-full ${currentTrackIndex === idx ? 'bg-[#d0bcff]' : 'bg-zinc-600'}`} />
                       <span className="max-w-[180px] truncate">{track.title}</span>
                     </button>
                   ))
                 )}
               </div>
-            </div>
+            </motion.div>
           </div>
         </section>
 
-        {/* ACT III: PRINCIPLES OF RESTRAINT (Thoughtful Architecture) */}
-        <section id="tenets" className="py-24 border-t border-white/5 bg-[#0e0e0f]">
+        {/* ACT IV: THE ARCHITECTURE OF RESTRAINT */}
+        <section id="tenets" className="py-28 border-t border-white/5 bg-[#0a0a0f]">
           <div className="max-w-5xl mx-auto px-6 sm:px-8">
-            <div className="max-w-2xl mb-16">
-              <span className="text-xs uppercase tracking-[0.2em] text-[#d0bcff] font-mono">
-                The Architecture of Restraint
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight mt-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-100px' }}
+              transition={{ duration: 0.8 }}
+              className="max-w-2xl mb-16"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs uppercase tracking-[0.25em] text-emerald-400 font-mono font-semibold">
+                  ACT IV • Architecture of Restraint
+                </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+              <h2 className="text-3xl sm:text-5xl font-light text-white tracking-tight">
                 Honesty in every byte.
               </h2>
               <p className="mt-3 text-sm text-zinc-400 font-light">
-                No corporate sleight of hand. Just sound technology woven around your autonomy.
+                No corporate sleight of hand. Just pure sound technology woven around listener autonomy.
               </p>
-            </div>
+            </motion.div>
 
             <div className="space-y-6">
-              {/* Principle 1 */}
-              <div className="p-8 rounded-2xl bg-[#1c1b1c]/40 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Architecture 1 */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-emerald-400/40 transition-all duration-300"
+              >
                 <div className="flex items-start gap-4 max-w-2xl">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] flex-shrink-0 mt-1">
+                  <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-300 flex-shrink-0 mt-1">
                     <Feather className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-white">
-                      Zero-Copy Memory Audio Mounts
+                      Zero-Copy In-Memory Audio Mounts
                     </h3>
                     <p className="text-xs sm:text-sm text-zinc-400 font-light mt-1.5 leading-relaxed">
-                      Select any local folder on your disk. Riveria creates instantaneous, in-memory browser Object URLs. Your audio plays with pure fidelity right off your drive—no server upload, no storage quotas, and zero data leakage.
+                      Select any local folder on your computer. Riveria creates instantaneous, in-memory browser Object URLs. Your audio plays with pure fidelity right off your drive—no server upload, no storage fees, and zero data leakage.
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-mono text-[#d0bcff] px-3 py-1.5 rounded-full bg-[#2a2a2b] border border-white/5 flex-shrink-0">
+                <span className="text-xs font-mono text-emerald-400 px-3 py-1.5 rounded-full bg-emerald-950/30 border border-emerald-400/20 flex-shrink-0">
                   Client-Side Sovereignty
                 </span>
-              </div>
+              </motion.div>
 
-              {/* Principle 2 */}
-              <div className="p-8 rounded-2xl bg-[#1c1b1c]/40 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Architecture 2 */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-[#d0bcff]/40 transition-all duration-300"
+              >
                 <div className="flex items-start gap-4 max-w-2xl">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] flex-shrink-0 mt-1">
+                  <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-400/20 flex items-center justify-center text-[#d0bcff] flex-shrink-0 mt-1">
                     <Compass className="w-5 h-5" />
                   </div>
                   <div>
@@ -705,15 +932,21 @@ export default function LandingPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-mono text-[#d0bcff] px-3 py-1.5 rounded-full bg-[#2a2a2b] border border-white/5 flex-shrink-0">
+                <span className="text-xs font-mono text-[#d0bcff] px-3 py-1.5 rounded-full bg-purple-950/30 border border-[#d0bcff]/20 flex-shrink-0">
                   Direct Peer DataChannels
                 </span>
-              </div>
+              </motion.div>
 
-              {/* Principle 3 */}
-              <div className="p-8 rounded-2xl bg-[#1c1b1c]/40 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-[#d0bcff]/30 transition-all duration-300">
+              {/* Architecture 3 */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="p-8 rounded-2xl bg-[#14131c]/50 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-cyan-400/40 transition-all duration-300"
+              >
                 <div className="flex items-start gap-4 max-w-2xl">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#d0bcff] flex-shrink-0 mt-1">
+                  <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-300 flex-shrink-0 mt-1">
                     <EyeOff className="w-5 h-5" />
                   </div>
                   <div>
@@ -725,23 +958,29 @@ export default function LandingPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-mono text-[#d0bcff] px-3 py-1.5 rounded-full bg-[#2a2a2b] border border-white/5 flex-shrink-0">
+                <span className="text-xs font-mono text-cyan-400 px-3 py-1.5 rounded-full bg-cyan-950/30 border border-cyan-400/20 flex-shrink-0">
                   Zero Telemetry
                 </span>
-              </div>
+              </motion.div>
             </div>
           </div>
         </section>
 
-        {/* ACT IV: THE INVITATION */}
+        {/* ACT V: THE DAYDREAM HORIZON */}
         <section id="horizon" className="py-28 relative overflow-hidden border-t border-white/5">
           <div className="max-w-4xl mx-auto px-6 sm:px-8 text-center relative z-10">
-            <div className="p-10 sm:p-16 rounded-3xl bg-gradient-to-b from-[#201f20]/80 via-[#1c1b1c]/90 to-[#0e0e0f] border border-[#d0bcff]/20 backdrop-blur-2xl shadow-[0_20px_70px_rgba(0,0,0,0.7)]">
-              <span className="text-xs uppercase tracking-[0.22em] text-[#d0bcff] font-mono">
-                An Invitation
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.8 }}
+              className="p-10 sm:p-16 rounded-3xl bg-gradient-to-b from-[#1c1a26]/90 via-[#15141f]/95 to-[#0a0a0f] border border-[#d0bcff]/20 backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.85)]"
+            >
+              <span className="text-xs uppercase tracking-[0.25em] text-[#d0bcff] font-mono font-semibold">
+                ACT V • The Daydream Horizon
               </span>
               <h2 className="text-3xl sm:text-5xl font-light text-white tracking-tight mt-3">
-                Lose yourself in the daydream.
+                Lose yourself in the reverie.
               </h2>
               <p className="mt-6 text-sm sm:text-base text-zinc-300 font-light max-w-xl mx-auto leading-relaxed">
                 There are no algorithmic feeds to scroll, no commercial interruptions to endure, and no barriers between your files and your queue. Just you, your music, and the quiet clarity of reverie.
@@ -750,7 +989,7 @@ export default function LandingPage() {
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link
                   to={destination}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_30px_rgba(160,120,255,0.4)] hover:scale-[1.01]"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-[#a078ff] text-white text-xs uppercase tracking-widest font-semibold hover:brightness-110 transition-all duration-300 shadow-[0_0_35px_rgba(160,120,255,0.4)] hover:scale-[1.01]"
                 >
                   <span>{token ? 'Enter Riveria Studio' : 'Step Into Riveria'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -759,7 +998,7 @@ export default function LandingPage() {
                   href="https://github.com/Parth-Chavan-15/Riveria"
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 text-zinc-300 hover:text-white text-xs uppercase tracking-widest font-medium transition-all duration-300"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-300 hover:text-white text-xs uppercase tracking-widest font-medium transition-all duration-300"
                 >
                   <span>Explore the Source</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -769,13 +1008,101 @@ export default function LandingPage() {
               <p className="mt-8 text-[11px] font-mono text-zinc-500">
                 Crafted for listeners who cherish stillness and personal sovereignty.
               </p>
-            </div>
+            </motion.div>
           </div>
         </section>
       </main>
 
+      {/* Floating Cinematic Audio Journey Dock (Appears as user scrolls through sections) */}
+      <AnimatePresence>
+        {showFloatingDock && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            transition={{ duration: 0.4 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92vw] max-w-2xl bg-[#12111a]/85 backdrop-blur-2xl border border-[#d0bcff]/30 rounded-2xl p-3 sm:px-5 sm:py-3 shadow-[0_15px_50px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4"
+          >
+            {/* Left: Act + Track Metadata */}
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center text-black flex-shrink-0 shadow-[0_0_12px_rgba(208,188,255,0.3)]">
+                <span className="material-symbols-outlined text-lg font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  graphic_eq
+                </span>
+              </div>
+              <div className="overflow-hidden">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#d0bcff] font-semibold">
+                    {ACT_METADATA[activeSection]?.actNumber}: {ACT_METADATA[activeSection]?.actName}
+                  </span>
+                </div>
+                <p className="text-xs font-medium text-white truncate max-w-[140px] sm:max-w-[200px]">
+                  {activePiece.title}
+                </p>
+              </div>
+            </div>
+
+            {/* Center: Live Waveform in mini dock */}
+            <div className="hidden sm:flex items-end gap-1 h-6 w-20 px-2 py-1 rounded bg-black/40 border border-white/5">
+              {waveAmplitudes.slice(0, 8).map((amp, idx) => (
+                <motion.span
+                  key={idx}
+                  animate={{ height: isPlaying ? `${Math.max(15, amp * 0.25)}px` : '3px' }}
+                  transition={{ duration: 0.2 }}
+                  className="w-1 bg-[#d0bcff] rounded-full inline-block"
+                />
+              ))}
+            </div>
+
+            {/* Right: Controls & Follow Scroll Toggle */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <button
+                onClick={() => setFollowScroll(!followScroll)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 border ${
+                  followScroll
+                    ? 'bg-[#d0bcff]/20 text-[#d0bcff] border-[#d0bcff]/40 shadow-[0_0_10px_rgba(208,188,255,0.2)]'
+                    : 'bg-white/[0.03] text-zinc-400 border-white/10 hover:text-zinc-200'
+                }`}
+                title="When active, music automatically changes as you scroll across sections"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                <span className="hidden md:inline">Sync Scroll</span>
+              </button>
+
+              <button
+                onClick={handlePrevTrack}
+                className="p-1.5 text-zinc-400 hover:text-white transition-colors"
+                title="Previous Movement"
+              >
+                <SkipBack className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                onClick={handleTogglePlay}
+                className="w-8 h-8 rounded-full bg-[#d0bcff] hover:bg-[#e9ddff] text-black flex items-center justify-center transition-transform active:scale-90 shadow-[0_0_15px_rgba(208,188,255,0.4)]"
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? (
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={handleNextTrack}
+                className="p-1.5 text-zinc-400 hover:text-white transition-colors"
+                title="Next Movement"
+              >
+                <SkipForward className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Epilogue: Literary Footer */}
-      <footer className="w-full bg-[#0a0a0a] py-16 border-t border-white/5">
+      <footer className="w-full bg-[#07070a] py-16 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 flex flex-col gap-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div className="flex items-center gap-3">

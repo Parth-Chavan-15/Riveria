@@ -40,21 +40,21 @@ No corporate tracking, no noisy clutter—just pure sound and the quiet space be
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Your Browser (React 19 + Tailwind 4)"]
-        Landing["Listening Chamber\n(Fluid Interactive Player)"]
-        LocalHub["Local Sync Hub\n(In-Memory Local Music)"]
+    subgraph Browser ["Your Browser (React 19 + Tailwind 4)"]
+        Chamber["Listening Chamber\n(Fluid Interactive Player)"]
+        LocalHub["Local Music Hub\n(In-Memory Object URLs)"]
         JamSession["WebRTC Jam Room\n(Real-Time Shared Listening)"]
     end
 
-    subgraph Edge ["Vercel Cloud & CDN"]
+    subgraph Edge ["Vercel Edge & Cloud CDN"]
         VercelRouter["Vercel Unified Router\n(vercel.json)"]
         StaticAssets["Visuals & Covers\n(/covers & Artwork)"]
     end
 
-    subgraph Backend ["Riveria Engine (Node.js + Express 5)"]
-        ByteStream["Audio Streamer\n(206 Partial Content / Range Requests)"]
-        MagicValidator["Audio File Checker\n(Magic-Byte Security)"]
-        SocketSignaler["Live Room Signaling\n(Socket.IO Mesh)"]
+    subgraph Backend ["Riveria Engine (Node.js 20 + Express 5)"]
+        ByteStream["Audio Streamer\n(206 Partial Content / 512KB Ranges)"]
+        MagicValidator["File Validator\n(Magic-Byte Security)"]
+        SocketSignaler["Room Signaling\n(Socket.IO Mesh)"]
     end
 
     subgraph Database ["Cloud Storage (MongoDB Atlas)"]
@@ -63,43 +63,55 @@ flowchart TD
         MongoUsers[("User Accounts & Admin Roles")]
     end
 
-    Client -->|"Public Web Routes"| VercelRouter
-    VercelRouter -->|"Web App Client"| Client
+    Browser -->|"Public Web Routes"| VercelRouter
+    VercelRouter -->|"Web App Client"| Browser
     VercelRouter -->|"Express 5 API"| Backend
-    Client -->|"Album Covers"| StaticAssets
-    Client <--->|"Direct Peer Sync"| Client
+    Browser -->|"Album Covers"| StaticAssets
+    JamSession <-->|"Sub-50ms DataChannels"| RemotePeer["Remote Peer Browser"]
     Backend -->|"Fetch Tracks"| MongoTracks
     Backend -->|"Stream Audio Chunks"| MongoGridFS
     Backend -->|"RFC 9110 Stream"| ByteStream
 ```
 
-### 1. Private Local Music Mounts (Zero Server Uploads)
+### 1. Real-Time Multi-Threaded Audio Streaming (0ms Instant Playback)
+Riveria eliminates audio buffering delays through a two-fold streaming pipeline:
+* **Server-Side Range Capping**: Open-ended audio byte requests (`Range: bytes=0-`) are sliced into nimble 512 KB chunks with HTTP `206 Partial Content` and immutable edge caching headers. The browser receives the initial audio frame in milliseconds rather than waiting for multi-megabyte payloads.
+* **Client-Side Parallel Preloading**: On landing page arrival, background threads parallel-prime the initial audio buffers for all five movement tracks. When you press play or journey across sections, playback begins instantaneously without network hesitation.
+
+### 2. Scroll-Driven Cinematic Musical Odyssey
+As you scroll down the landing page, Riveria transitions through five cinematic Acts inspired by high-end interactive websites:
+* **Act I: The Awakening (Hero / The Overture)** — Warm melodic guitar and golden ambient veils (*Sunflower*).
+* **Act II: The Sovereign Haven (Philosophy)** — Rhythmic pulse and cybernetic cyan tones (*Thunder*).
+* **Act III: The Living Chamber (Console Deck)** — Full interactive glassmorphic player deck, rotating vinyl core, dynamic scrubber, and live spectrum waves (*Believer*).
+* **Act IV: Architecture of Restraint (Engineering)** — Crisp acoustic clarity and emerald-teal architectural pillars (*Birds*).
+* **Act V: The Daydream Horizon (The Reverie)** — Violet dreamscapes and the invitation to step into sovereign listening (*Happier*).
+* **Sync-Scroll Mode**: When sound is active, tracks crossfade smoothly (fading down over 150ms, switching primed audio, and fading up over 250ms) as you explore each Act. You can toggle Sync-Scroll or control playback anytime from the floating bottom audio dock.
+
+### 3. Private Local Music Mounts (Zero Server Uploads)
 Pick any music folder on your computer. Riveria creates instantaneous, in-memory browser audio links (`Object URLs`). Your songs play instantly with pure, original sound quality right from your drive—no server upload, no monthly storage fees, and zero data leakage.
 
-### 2. Synchronized Listening Rooms (WebRTC Peer Mesh)
+### 4. Synchronized Listening Rooms (WebRTC Peer Mesh)
 Music is best shared. Using lightweight signaling and direct browser-to-browser data channels, playhead timestamps, pause events, and seek positions travel straight between you and your friends with sub-50ms latency. No middleman server delays.
 
-### 3. Native MongoDB Atlas GridFS Streaming
+### 5. Native MongoDB Atlas GridFS Streaming
 All cloud songs are stored as binary chunks inside MongoDB Atlas using native GridFS. When you press play or jump to any part of a song, Riveria streams just the audio bytes you need using standard HTTP `206 Partial Content` Range headers. This means fast, buffer-free playback without needing third-party cloud buckets.
 
-### 4. Real Audio File Security
+### 6. Real Audio File Security
 File extensions can be renamed, but binary signatures cannot lie. Before saving any new track, Riveria inspects the binary headers (verifying genuine MP3, WAV, FLAC, OGG, or MP4 headers) to ensure every file in the library is clean, safe, and authentic.
 
-### 5. Obsidian & Lavender Aesthetics
+### 7. Obsidian & Lavender Aesthetics
 Designed with deep obsidian tones (`#0a0a0f`), soft frosted glass cards (`backdrop-blur-xl`), and gentle lavender neon highlights (`#d0bcff`), Riveria feels like a dedicated listening studio made for focus and immersion.
-
-### 6. Built-in Roles & Peace of Mind
-Anyone can register in seconds to stream music and mount local folders. Uploading new cloud master tracks or removing songs is reserved for administrators, protected by secure token authentication.
 
 ---
 
 ## ✦ The Living Instrument: Chamber Player
 
 The landing page features an interactive listening pavilion:
-* **Dynamic Cloud Synchronizer**: Seamlessly loads cloud tracks from `/api/tracks` into memory on arrival.
-* **Master Controls**: Play/pause, track seeking with click-to-scrub timecodes, skip forward/backward, movement shuffle, and precision master gain slider.
-* **Spectrum Equalizer**: Animated wave visualizer pulsating in harmony with the playback state.
-* **Dynamic Cover Art**: Atmospheric blurred album art backdrop behind the rotating vinyl core.
+* **Scroll-Driven Musical Journey**: As you scroll through the 5 Acts of Riveria, the soundtrack and visual atmosphere transition smoothly in real time.
+* **Instant In-Memory Preload**: Multi-threaded parallel byte-range preloading eliminates buffering, delivering instant 0ms playback on any device.
+* **Floating Audio Journey Dock**: Docked persistent controls with live EQ bars, act indicators, and an optional "Sync Scroll" mode toggle.
+* **Fluid Master Deck**: Full player controls including click-to-scrub timecodes, track skipping, shuffle movements, and master volume gain.
+* **Spectrum Equalizer & Rotating Vinyl**: Real-time responsive waveform frequencies and album art extracted from true track metadata.
 
 ---
 

@@ -161,6 +161,12 @@ exports.streamAudio = async (req, res, next) => {
           }
         }
 
+        // Cap maximum single range chunk to 1 MB to ensure sub-100ms real-time delivery
+        const MAX_CHUNK = 1024 * 1024;
+        if (end - start + 1 > MAX_CHUNK) {
+          end = Math.min(start + MAX_CHUNK - 1, fileSize - 1);
+        }
+
         if (start >= fileSize || start > end) {
           return res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
         }
@@ -220,6 +226,11 @@ exports.streamAudio = async (req, res, next) => {
           const CHUNK_SIZE = 512 * 1024;
           end = Math.min(start + CHUNK_SIZE - 1, stat.size - 1);
         }
+      }
+
+      const MAX_CHUNK = 1024 * 1024;
+      if (end - start + 1 > MAX_CHUNK) {
+        end = Math.min(start + MAX_CHUNK - 1, stat.size - 1);
       }
 
       if (start >= stat.size || start > end) {

@@ -32,7 +32,7 @@ function TopBar() {
     };
 
     return (
-        <header className="hidden md:flex fixed top-0 left-80 right-0 h-20 bg-transparent justify-between items-center px-8 z-30">
+        <header className="hidden md:flex fixed top-0 left-80 right-0 h-20 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5 justify-between items-center px-8 z-30">
             <div className="flex-grow max-w-md hidden md:block">
                 {/* Search Bar Placeholder */}
             </div>

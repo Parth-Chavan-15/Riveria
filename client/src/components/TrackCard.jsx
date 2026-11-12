@@ -26,7 +26,10 @@ function TrackCard({ trackData, onDelete }) {
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-xl bg-white/5 border border-white/10 p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-white/10 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)] cursor-pointer">
+    <div
+      onClick={handlePlayClick}
+      className="group relative overflow-hidden rounded-xl bg-white/5 border border-white/10 p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-white/10 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)] cursor-pointer"
+    >
       
       {/* Conditionally render the image. If missing, the imageColor gradient background shows natively! */}
       <div className={`aspect-square w-full rounded-lg ${imageColor || 'bg-gradient-to-br from-purple-600 to-indigo-900'} mb-4 relative overflow-hidden shadow-inner flex items-center justify-center`}>

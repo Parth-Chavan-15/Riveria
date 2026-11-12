@@ -24,68 +24,72 @@
 
 ## ✦ The Prologue
 
-In a modern musical landscape crowded with algorithmic clamor, aggressive telemetry, commercial feeds, and ephemeral marketing trends, **Riveria** was envisioned as an unhurried harbor.
+Most music apps today feel like crowded spreadsheets filled with endless advertisements, algorithms guessing your mood, and background trackers. 
 
-Traditional platforms treat your songs like catalog items on an inventory spreadsheet. Riveria reclaims music as an intimate, emotional experience—marrying audiophile-grade playback mechanics with the warmth of shared resonance and total sovereignty over your personal audio archives.
+**Riveria** was created as a quiet, thoughtful harbor for daydreamers and music lovers. Here, sound is personal again:
 
-Mount your private recordings directly from disk without uploading a single byte, stream master cloud recordings across delicate byte-range chunks directly from MongoDB Atlas GridFS, or step into a zero-latency WebRTC Jam where you and a companion across oceans hear each crescendo at the exact same millisecond.
+- **Play your local files privately**: Mount songs straight from your computer or phone. They play instantly in your browser memory without uploading a single byte to any server.
+- **Stream master cloud tracks**: Explore curated cloud music streamed on demand directly from MongoDB Atlas GridFS with smooth range seeking.
+- **Listen together in real-time**: Start a private Jam room with a friend across the world. When you press play or skip a second, their player updates at the exact same millisecond.
+
+No corporate tracking, no noisy clutter—just pure sound and the quiet space between thoughts.
 
 ---
 
-## ✦ Key Architectural Pillars
+## ✦ How Riveria Works (Architecture)
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Client Browser (React 19 + Tailwind 4)"]
-        Landing["Listening Chamber\n(Fluid Player Deck)"]
-        LocalHub["Local Sync Hub\n(In-Memory Object URLs)"]
-        JamSession["WebRTC Jam Studio\n(Peer DataChannels)"]
+    subgraph Client ["Your Browser (React 19 + Tailwind 4)"]
+        Landing["Listening Chamber\n(Fluid Interactive Player)"]
+        LocalHub["Local Sync Hub\n(In-Memory Local Music)"]
+        JamSession["WebRTC Jam Room\n(Real-Time Shared Listening)"]
     end
 
-    subgraph Edge ["Vercel Edge & Cloud CDN"]
-        VercelRouter["Vercel Multi-Service Router\n(vercel.json)"]
-        StaticAssets["Static Audio & Visuals\n(/covers & CDN)"]
+    subgraph Edge ["Vercel Cloud & CDN"]
+        VercelRouter["Vercel Unified Router\n(vercel.json)"]
+        StaticAssets["Visuals & Covers\n(/covers & Artwork)"]
     end
 
-    subgraph Backend ["Riveria Core Engine (Node 20 + Express 5)"]
-        ByteStream["RFC 9110 Streamer\n(206 Partial Content)"]
-        MagicValidator["Binary Signature Validator\n(Magic-Byte Headers)"]
-        SocketSignaler["Socket.IO Signaling\n(Mesh Discovery)"]
+    subgraph Backend ["Riveria Engine (Node.js + Express 5)"]
+        ByteStream["Audio Streamer\n(206 Partial Content / Range Requests)"]
+        MagicValidator["Audio File Checker\n(Magic-Byte Security)"]
+        SocketSignaler["Live Room Signaling\n(Socket.IO Mesh)"]
     end
 
-    subgraph Database ["Cloud State (MongoDB Atlas)"]
-        MongoTracks[("Tracks & Metadata")]
-        MongoGridFS[("GridFS Audio Storage\n(Direct Atlas Chunks)")]
-        MongoUsers[("RBAC & Security")]
+    subgraph Database ["Cloud Storage (MongoDB Atlas)"]
+        MongoTracks[("Track Details & Metadata")]
+        MongoGridFS[("GridFS Audio Library\n(Streaming Chunks)")]
+        MongoUsers[("User Accounts & Admin Roles")]
     end
 
     Client -->|"Public Web Routes"| VercelRouter
     VercelRouter -->|"Web App Client"| Client
     VercelRouter -->|"Express 5 API"| Backend
-    Client -->|"CDN Static Covers"| StaticAssets
-    Client <--->|"P2P DataChannels"| Client
-    Backend -->|"Live Query & Metadata"| MongoTracks
-    Backend -->|"Chunk Streaming"| MongoGridFS
-    Backend -->|"RFC 9110 Range Pipeline"| ByteStream
+    Client -->|"Album Covers"| StaticAssets
+    Client <--->|"Direct Peer Sync"| Client
+    Backend -->|"Fetch Tracks"| MongoTracks
+    Backend -->|"Stream Audio Chunks"| MongoGridFS
+    Backend -->|"RFC 9110 Stream"| ByteStream
 ```
 
-### 1. Sovereign In-Memory Browser Mounts
-*Select any folder on your device.* Riveria provisions instantaneous, client-isolated in-memory browser `Object URLs`. Your acoustic sessions, rare vinyl rips, and master FLAC/WAV files remain strictly on your machine—zero cloud leakage, zero quota limits, and 100% data sovereignty.
+### 1. Private Local Music Mounts (Zero Server Uploads)
+Pick any music folder on your computer. Riveria creates instantaneous, in-memory browser audio links (`Object URLs`). Your songs play instantly with pure, original sound quality right from your drive—no server upload, no monthly storage fees, and zero data leakage.
 
-### 2. Direct WebRTC Peer Mesh Jams
-Listening together should feel like sitting on the same carpet. Utilizing Socket.IO for ephemeral signaling and establishing direct WebRTC DataChannels between peers, playhead indices, scrub positions, and pause states sync directly between browser sessions with sub-50ms latency—completely bypassing intermediary server serialization.
+### 2. Synchronized Listening Rooms (WebRTC Peer Mesh)
+Music is best shared. Using lightweight signaling and direct browser-to-browser data channels, playhead timestamps, pause events, and seek positions travel straight between you and your friends with sub-50ms latency. No middleman server delays.
 
-### 3. Native MongoDB Atlas GridFS & RFC 9110 Byte-Range Slicing
-Audio tracks are stored directly in MongoDB Atlas using native GridFS chunking. When a listener plays or scrubs a track, Riveria pipes binary audio chunks on demand with RFC 9110 HTTP `Range` headers (`206 Partial Content`). This eliminates external cloud hosting dependencies (no Render or S3 buckets needed) while keeping GitHub completely free of media files.
+### 3. Native MongoDB Atlas GridFS Streaming
+All cloud songs are stored as binary chunks inside MongoDB Atlas using native GridFS. When you press play or jump to any part of a song, Riveria streams just the audio bytes you need using standard HTTP `206 Partial Content` Range headers. This means fast, buffer-free playback without needing third-party cloud buckets.
 
-### 4. Binary Magic-Byte Security
-File extensions and MIME headers can be forged. Riveria inspects raw binary magic bytes at the file header level (verifying `ID3`/sync frames for MP3, `RIFF`/`WAVE` for WAV, `OggS` for OGG, `fLaC` for FLAC, and `ftyp` for MP4/AAC) before accepting uploads, instantly unlinking unverified files.
+### 4. Real Audio File Security
+File extensions can be renamed, but binary signatures cannot lie. Before saving any new track, Riveria inspects the binary headers (verifying genuine MP3, WAV, FLAC, OGG, or MP4 headers) to ensure every file in the library is clean, safe, and authentic.
 
-### 5. Audiophile Obsidian & Lavender Glassmorphism
-Styled in deep obsidian (`#0e0e0f`), translucent smoked acrylic cards (`bg-white/5`), luminous lavender accents (`#d0bcff`), and reactive frequency equalizer spectrum bars, Riveria is crafted to look and feel like an audiophile high-fidelity workstation.
+### 5. Obsidian & Lavender Aesthetics
+Designed with deep obsidian tones (`#0a0a0f`), soft frosted glass cards (`backdrop-blur-xl`), and gentle lavender neon highlights (`#d0bcff`), Riveria feels like a dedicated listening studio made for focus and immersion.
 
-### 6. Role-Based Access Control (RBAC)
-Public guests can register and immediately enjoy dynamic cloud streaming and local audio mounting. Administrative catalog management (uploading cloud masters, updating metadata, or deleting entries) is strictly guarded by JWT audience validation and Zod schema sanitization.
+### 6. Built-in Roles & Peace of Mind
+Anyone can register in seconds to stream music and mount local folders. Uploading new cloud master tracks or removing songs is reserved for administrators, protected by secure token authentication.
 
 ---
 
@@ -148,36 +152,30 @@ Open `http://localhost:5173` in your browser. The Vite development proxy forward
 
 ---
 
-## ✦ Deployment: Vercel Multi-Service
+## ✦ Deployment: Deploying to Vercel (Frontend & Backend Together)
 
-Riveria is engineered for native **Vercel Services**, hosting both frontend and backend as a unified project under a single domain.
+Riveria is configured to deploy both the frontend (React 19) and backend (Express 5 with MongoDB Atlas) as a single project under one domain.
 
-Root `vercel.json`:
-```json
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "client": {
-      "root": "client",
-      "framework": "vite"
-    },
-    "server": {
-      "root": "server",
-      "framework": "express"
-    }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "server" } },
-    { "source": "/(.*)", "destination": { "service": "client" } }
-  ]
-}
-```
+### Step-by-Step Vercel Deployment:
 
-### Vercel Environment Variables
-Set these under **Project Settings > Environment Variables**:
-* `MONGODB_URI` — Your MongoDB Atlas connection URI
-* `JWT_SECRET` — 32+ character authentication key
-* `NODE_ENV` — `production`
+1. **Import your GitHub Repository:**
+   - Log into [Vercel](https://vercel.com) and click **Add New... > Project**.
+   - Select your repository: `Parth-Chavan-15/Riveria`.
+   - Leave the Root Directory as `./` (default).
+
+2. **Add Environment Variables:**
+   Under **Environment Variables**, add the 3 required keys:
+   - `MONGODB_URI` — Your MongoDB Atlas connection string (e.g. `mongodb+srv://...`)
+   - `JWT_SECRET` — A secure secret string (32+ characters)
+   - `NODE_ENV` — `production`
+
+3. **Deploy:**
+   - Click **Deploy**. Vercel will build the frontend with Vite and automatically wire the API routes to the Express backend.
+   - Once deployment finishes, your app will be live worldwide with instant audio streaming!
+
+> [!TIP]
+> **GitHub Deployments Sidebar Note:**
+> If your GitHub repository sidebar shows a red `Deployments ❌ production`, this is a leftover status indicator from older workflow runs. You can clear it anytime by navigating to **GitHub > Repository Settings > Environments > production > Delete environment**. The active code status is tracked by the green CI check (`✔`).
 
 ---
 

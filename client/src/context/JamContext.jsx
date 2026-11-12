@@ -42,7 +42,7 @@ export function JamProvider({ children }) {
     if (typeof window === 'undefined') return `peer_${crypto.randomUUID().slice(0, 8)}`;
     try {
       const existing = sessionStorage.getItem('reveria:my_peer_id') || localStorage.getItem('reveria:my_peer_id');
-      if (existing) return existing;
+      if (existing && existing.startsWith('peer')) return existing;
       const newId = `peer_${crypto.randomUUID().slice(0, 8)}`;
       sessionStorage.setItem('reveria:my_peer_id', newId);
       localStorage.setItem('reveria:my_peer_id', newId);
@@ -61,6 +61,8 @@ export function JamProvider({ children }) {
   const activeIncomingTransferRef = useRef(null);
   const joinedRoomRef = useRef('');
   const isIncomingSyncRef = useRef(false);
+  const lastProcessedTimestampRef = useRef(0);
+  const localSeqRef = useRef(0);
 
   // Persistent room state restored across route navigation and browser tabs
   const getSavedRoom = () => {
@@ -116,6 +118,15 @@ export function JamProvider({ children }) {
   const handlePlaybackSync = useCallback((payload) => {
     if (!payload?.trackId && !payload?.track) return;
     if (payload.fromPeerId && payload.fromPeerId === myPeerIdRef.current) return;
+
+    // Reject stale / out-of-order packets that arrive after a newer state was already processed
+    const packetTime = Number(payload.serverTime || payload.timestamp) || 0;
+    if (packetTime && lastProcessedTimestampRef.current && packetTime < lastProcessedTimestampRef.current - 500) {
+      return;
+    }
+    if (packetTime > lastProcessedTimestampRef.current) {
+      lastProcessedTimestampRef.current = packetTime;
+    }
 
     isIncomingSyncRef.current = true;
     const effectiveJamTracks = collabPlaylistRef.current.length > 0
@@ -680,7 +691,8 @@ export function JamProvider({ children }) {
         timestamp: Date.now(),
         serverTime: serverTimeEst,
         scheduledStartTime,
-        fromPeerId: myPeerIdRef.current
+        fromPeerId: myPeerIdRef.current,
+        seq: ++localSeqRef.current
       };
 
       // 1. Direct WebRTC DataChannel (sub-10ms peer-to-peer sync)

@@ -125,7 +125,11 @@ exports.pollSignals = async (req, res, next) => {
     );
 
     if (!room) {
-      // Peer not yet in array, push peer atomically
+      // Peer not yet in array, atomically pull any duplicate/stale entries for peerId, then push
+      await JamRoom.updateOne(
+        { roomId: normalizedRoom },
+        { $pull: { peers: { peerId } } }
+      );
       room = await JamRoom.findOneAndUpdate(
         { roomId: normalizedRoom },
         {
@@ -166,7 +170,14 @@ exports.pollSignals = async (req, res, next) => {
     const activePeers = (room?.peers || []).filter(
       (p) => now - new Date(p.lastSeen) < PEER_TIMEOUT_MS
     );
-    const peers = activePeers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role }));
+    const seenPeers = new Set();
+    const peers = [];
+    for (const p of activePeers) {
+      if (!seenPeers.has(p.peerId)) {
+        seenPeers.add(p.peerId);
+        peers.push({ peerId: p.peerId, email: p.email, role: p.role });
+      }
+    }
     const playlist = room?.playlist || [];
 
     res.json({

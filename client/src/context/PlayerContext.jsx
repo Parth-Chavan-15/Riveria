@@ -49,6 +49,8 @@ export function PlayerProvider({ children }) {
   const rateNudgeTimerRef = useRef(null);
   const clockSkewRef = useRef(0);
   const clockSamplesRef = useRef([]);
+  const lastTrackChangeTimeRef = useRef(0);
+  const trackLoadingRef = useRef(null);
 
   const resetRoomVersion = useCallback((roomId) => {
     if (roomId) {
@@ -186,15 +188,22 @@ export function PlayerProvider({ children }) {
 
     const audio = audioRef.current;
     setError('');
+    lastTrackChangeTimeRef.current = Date.now();
 
-    const isDifferent = (currentTrack?._id || currentTrack?.id) !== (track._id || track.id);
+    const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
+    const nextId = track._id || track.id;
+    const isDifferent = currentId !== nextId;
+
     if (isDifferent) {
+      trackLoadingRef.current = nextId;
       audio.src = source;
       audio.preload = 'auto';
       audio.volume = isMuted ? 0 : volume / 100;
       audio.load();
+      currentTrackRef.current = track;
       setCurrentTrack(track);
       setPosition(0);
+      trackLoadingRef.current = null;
     }
 
     if (autoPlay) {
@@ -323,6 +332,9 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     const audio = audioRef.current;
     const onEnded = () => {
+      // Guard against race conditions and double-skips during transitions
+      if (Date.now() - lastTrackChangeTimeRef.current < 2000) return;
+      lastTrackChangeTimeRef.current = Date.now();
       playNext();
     };
     audio.addEventListener('ended', onEnded);
@@ -411,7 +423,8 @@ export function PlayerProvider({ children }) {
       isPlaying: remoteIsPlaying,
       track: directTrack,
       timestamp,
-      serverTime,
+      serverTime: recordedServerTime,
+      currentServerTime,
       scheduledStartTime,
       version,
       action
@@ -420,8 +433,9 @@ export function PlayerProvider({ children }) {
     const clientNow = Date.now();
 
     // 1. Clock Calibration (Cristian's algorithm with low-jitter filtering from Rust engine)
-    if (serverTime && typeof serverTime === 'number') {
-      const instantaneousSkew = serverTime - clientNow;
+    const pingServerTime = currentServerTime || recordedServerTime;
+    if (pingServerTime && typeof pingServerTime === 'number') {
+      const instantaneousSkew = pingServerTime - clientNow;
       // Add sample
       clockSamplesRef.current.push(instantaneousSkew);
       if (clockSamplesRef.current.length > 20) {
@@ -463,21 +477,23 @@ export function PlayerProvider({ children }) {
     const isTargetPlaying = Boolean(remoteIsPlaying);
     const nowServerEst = clientNow + clockSkewRef.current;
 
-    // 2. Compute target position with clock-skew corrected elapsed offset
+    // 2. Compute target position with clock-skew corrected elapsed offset from recorded moment
     let targetPos = Math.max(0, Number(remotePosition) || 0);
     if (isTargetPlaying) {
-      const originTime = serverTime || (timestamp ? new Date(timestamp).getTime() : nowServerEst);
+      const originTime = recordedServerTime || (timestamp ? new Date(timestamp).getTime() : nowServerEst);
       const elapsed = Math.max(0, Math.min(3600, (nowServerEst - originTime) / 1000));
       targetPos += elapsed;
     }
 
-    const currentId = currentTrack?._id || currentTrack?.id;
+    const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
     const isDifferentTrack = currentId !== targetId;
 
     // A. Track is different -> ALWAYS load and synchronize the room's track immediately!
     if (isDifferentTrack) {
+      if (trackLoadingRef.current === targetId) return; // Prevent concurrent re-entry
       if (incVersion > 0) roomVersionsRef.current.set(roomKey, incVersion);
       if (scheduledTimerRef.current) clearTimeout(scheduledTimerRef.current);
+      lastTrackChangeTimeRef.current = Date.now();
 
       await playTrack(track, allTracks, false /* do not autoplay yet; schedule synchronously */, true /* fromSync */);
 
@@ -562,18 +578,19 @@ export function PlayerProvider({ children }) {
         }
       } else {
         // Continuous Phase-Locked Loop (PLL) Single-Speaker Engine:
-        // Continuously runs on every heartbeat and poll to guarantee <5ms single-speaker lock!
+        // Continuously runs on every heartbeat and poll to guarantee <5ms single-speaker lock without stuttering!
         const drift = targetPos - audio.currentTime;
+        const isSeek = action === 'seek' || isNewAction;
 
-        if (action === 'seek' || Math.abs(drift) > 0.35) {
-          // Hard snap if seek or drift exceeds 350ms
+        if (isSeek || Math.abs(drift) > 1.2) {
+          // Hard snap only on discrete seek or major unrecoverable network drift (>1.2s)
           audio.currentTime = targetPos;
           setPosition(targetPos);
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
           audio.playbackRate = 1.0;
         } else if (Math.abs(drift) > 0.005) {
-          // High-precision acoustic phase micro-nudge (5ms - 350ms):
-          // Inaudible rate adjustment gently pulls devices into exact phase alignment
+          // High-precision acoustic phase micro-nudge (5ms - 1200ms):
+          // Inaudible rate adjustment gently pulls devices into exact phase alignment without looping!
           if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
           const rateAdjustment = Math.max(-0.04, Math.min(0.04, drift * 0.15));
           audio.playbackRate = 1.0 + rateAdjustment;
@@ -598,6 +615,7 @@ export function PlayerProvider({ children }) {
     error,
     localTracks,
     queue,
+    setQueue,
     isShuffle,
     repeatMode,
     volume,
@@ -624,6 +642,7 @@ export function PlayerProvider({ children }) {
     error,
     localTracks,
     queue,
+    setQueue,
     isShuffle,
     repeatMode,
     volume,

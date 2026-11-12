@@ -38,7 +38,21 @@ export function JamProvider({ children }) {
 
   const { user } = useAuth();
 
-  const myPeerIdRef = useRef(`peer-${crypto.randomUUID().slice(0, 8)}`);
+  const getPersistentPeerId = () => {
+    if (typeof window === 'undefined') return `peer_${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      const existing = sessionStorage.getItem('reveria:my_peer_id') || localStorage.getItem('reveria:my_peer_id');
+      if (existing) return existing;
+      const newId = `peer_${crypto.randomUUID().slice(0, 8)}`;
+      sessionStorage.setItem('reveria:my_peer_id', newId);
+      localStorage.setItem('reveria:my_peer_id', newId);
+      return newId;
+    } catch {
+      return `peer_${crypto.randomUUID().slice(0, 8)}`;
+    }
+  };
+
+  const myPeerIdRef = useRef(getPersistentPeerId());
   const socketRef = useRef(null);
   const peersRef = useRef(new Map());
   const tracksRef = useRef([]);
@@ -104,7 +118,10 @@ export function JamProvider({ children }) {
     if (payload.fromPeerId && payload.fromPeerId === myPeerIdRef.current) return;
 
     isIncomingSyncRef.current = true;
-    playerRef.current?.syncPlayback(payload, [...tracksRef.current, ...collabPlaylistRef.current]);
+    const effectiveJamTracks = collabPlaylistRef.current.length > 0
+      ? collabPlaylistRef.current
+      : [...tracksRef.current, ...(playerRef.current?.localTracks || [])];
+    playerRef.current?.syncPlayback(payload, effectiveJamTracks);
     setTimeout(() => {
       isIncomingSyncRef.current = false;
     }, 400);
@@ -118,6 +135,9 @@ export function JamProvider({ children }) {
   // Handle incoming collaborative playlist updates from a remote peer
   const handlePlaylistSync = useCallback((newPlaylist) => {
     setCollabPlaylist(newPlaylist);
+    if (Array.isArray(newPlaylist) && newPlaylist.length > 0) {
+      playerRef.current?.setQueue?.(newPlaylist);
+    }
     addLog('QUEUE', `Collaborative Jam Playlist updated (${newPlaylist.length} tracks).`);
   }, [addLog]);
 
@@ -452,7 +472,7 @@ export function JamProvider({ children }) {
           handlePlaybackSync({
             ...data.currentPlayback,
             roomId: curRoom,
-            serverTime: data.serverTime
+            currentServerTime: data.serverTime
           });
         }
 
@@ -491,7 +511,7 @@ export function JamProvider({ children }) {
           .then((data) => {
             if (data?.ok) {
               if (data.currentPlayback) {
-                handlePlaybackSync({ ...data.currentPlayback, serverTime: data.serverTime });
+                handlePlaybackSync({ ...data.currentPlayback, currentServerTime: data.serverTime });
               }
               if (Array.isArray(data.playlist)) {
                 setCollabPlaylist(data.playlist);
@@ -556,7 +576,8 @@ export function JamProvider({ children }) {
         try {
           handlePlaybackSync({
             ...result.currentPlayback,
-            serverTime: result.serverTime
+            roomId: targetCode,
+            currentServerTime: result.serverTime
           });
         } catch {}
       }
@@ -758,12 +779,13 @@ export function JamProvider({ children }) {
     const trackId = item.id || item._id;
     const localMatch = player.localTracks.find((t) => (t._id || t.id) === trackId);
     const cloudMatch = tracksRef.current.find((t) => (t._id || t.id) === trackId);
+    const effectiveQueue = collabPlaylist.length > 0 ? collabPlaylist : [...tracksRef.current, ...player.localTracks];
 
     if (localMatch) {
-      player.playTrack(localMatch, [...tracksRef.current, ...player.localTracks]);
+      player.playTrack(localMatch, effectiveQueue);
       streamLocalTrackToPeers(localMatch);
     } else if (cloudMatch) {
-      player.playTrack(cloudMatch, [...tracksRef.current, ...player.localTracks]);
+      player.playTrack(cloudMatch, effectiveQueue);
     } else {
       const fallbackCloud = item.type === 'Cloud' || !item.type ? {
         _id: trackId,
@@ -778,7 +800,7 @@ export function JamProvider({ children }) {
       } : null;
 
       if (fallbackCloud) {
-        player.playTrack(fallbackCloud, [...tracksRef.current, ...collabPlaylist]);
+        player.playTrack(fallbackCloud, effectiveQueue);
       } else {
         peersRef.current.forEach(({ channel }) => {
           if (channel?.readyState === 'open') {

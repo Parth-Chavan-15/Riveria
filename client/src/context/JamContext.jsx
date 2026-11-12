@@ -335,8 +335,10 @@ export function JamProvider({ children }) {
         }
       }
     } catch {
-      setStatus('A peer connection could not be negotiated.');
-      addLog('ERR', `Signaling negotiation error with peer ${fromId.slice(0, 8)}.`);
+      if (peersRef.current.size === 0) {
+        setStatus('Negotiating peer connection mesh…');
+      }
+      addLog('ERR', `Signaling negotiation retry with peer ${fromId.slice(0, 8)}.`);
     }
   }, [createPeer, dispatchSignal, addLog]);
 

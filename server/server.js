@@ -3,7 +3,6 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
@@ -39,11 +38,6 @@ app.disable('x-powered-by');
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '100kb' }));
-
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many authentication attempts. Try again later.' } } });
-app.use('/api', apiLimiter);
-app.use('/api/auth', authLimiter);
 
 io.use(async (socket, next) => {
   try {

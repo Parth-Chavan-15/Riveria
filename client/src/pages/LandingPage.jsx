@@ -306,23 +306,39 @@ export default function LandingPage() {
     return '';
   }, []);
 
-  // 1. Instant Audio Priming on Mount + Server Metadata Synchronization
+  // 1. Instant Audio Priming on Mount + Staggered Background Preloading
   useEffect(() => {
-    // A. Immediately prime HTML5 Audio elements for all 5 movements on Turn 0 (0ms)
-    STATIC_MOVEMENT_TRACKS.forEach((track) => {
-      const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
-      if (!audioPoolRef.current.has(track._id)) {
-        const audioElem = new Audio();
-        audioElem.preload = 'auto';
-        audioElem.src = streamUrl;
-        audioElem.volume = volume / 100;
-        audioElem.load(); // Prime initial byte buffer in browser memory
-        audioPoolRef.current.set(track._id, audioElem);
-        audioCoordinator.register(audioElem);
-      }
-    });
+    // A. Priority 1: Immediately prime Track 0 (Sunflower) on line 1 for instant 0ms start
+    const heroTrack = STATIC_MOVEMENT_TRACKS[0];
+    const heroStreamUrl = apiUrl(`/tracks/${heroTrack._id}/stream`);
+    if (!audioPoolRef.current.has(heroTrack._id)) {
+      const heroAudio = new Audio();
+      heroAudio.preload = 'auto';
+      heroAudio.src = heroStreamUrl;
+      heroAudio.volume = volume / 100;
+      heroAudio.load();
+      audioPoolRef.current.set(heroTrack._id, heroAudio);
+      activeAudioRef.current = heroAudio;
+      audioCoordinator.register(heroAudio);
+    }
 
-    // B. Background synchronization from MongoDB Atlas
+    // B. Priority 2: Stagger remaining tracks so Track 0 receives 100% network bandwidth
+    const preloadTimer = setTimeout(() => {
+      STATIC_MOVEMENT_TRACKS.slice(1).forEach((track) => {
+        const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
+        if (!audioPoolRef.current.has(track._id)) {
+          const audioElem = new Audio();
+          audioElem.preload = 'auto';
+          audioElem.src = streamUrl;
+          audioElem.volume = volume / 100;
+          audioElem.load();
+          audioPoolRef.current.set(track._id, audioElem);
+          audioCoordinator.register(audioElem);
+        }
+      });
+    }, 1000);
+
+    // C. Background metadata sync from MongoDB Atlas
     let active = true;
     apiRequest('/tracks')
       .then((data) => {
@@ -334,25 +350,13 @@ export default function LandingPage() {
         if (ordered.length >= 5) {
           setCloudTracks(ordered);
           cloudTracksRef.current = ordered;
-
-          ordered.forEach((track) => {
-            const url = apiUrl(`/tracks/${track._id}/stream`);
-            if (!audioPoolRef.current.has(track._id)) {
-              const audioElem = new Audio();
-              audioElem.preload = 'auto';
-              audioElem.src = url;
-              audioElem.volume = volume / 100;
-              audioElem.load();
-              audioPoolRef.current.set(track._id, audioElem);
-              audioCoordinator.register(audioElem);
-            }
-          });
         }
       })
       .catch(() => {});
 
     return () => {
       active = false;
+      clearTimeout(preloadTimer);
       stopAllLandingAudio();
     };
   }, [volume, stopAllLandingAudio]);
@@ -481,7 +485,7 @@ export default function LandingPage() {
     }
   }, [volume]);
 
-  // Handle Play/Pause with instant cancellation of in-flight fades
+  // Handle Play/Pause with instant zero-delay trigger and cancellation of in-flight fades
   const handleTogglePlay = useCallback(async () => {
     transitionEpochRef.current++;
     const current = activeAudioRef.current;
@@ -493,9 +497,18 @@ export default function LandingPage() {
       current.pause();
       setIsPlaying(false);
     } else {
+      if (current && current.paused && current.src) {
+        try {
+          audioCoordinator.claimExclusivePlayback(current, 'landing-page');
+          current.volume = volume / 100;
+          await current.play();
+          setIsPlaying(true);
+          return;
+        } catch {}
+      }
       await playTrackDirect(currentTrackIndex, true, false);
     }
-  }, [isPlaying, currentTrackIndex, playTrackDirect]);
+  }, [isPlaying, currentTrackIndex, volume, playTrackDirect]);
 
   // Spacebar play/pause keyboard shortcut
   useEffect(() => {

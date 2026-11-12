@@ -158,16 +158,8 @@ exports.streamAudio = async (req, res, next) => {
           if (match[2]) {
             end = Math.min(Number(match[2]), fileSize - 1);
           } else {
-            // Cap open-ended range request (e.g. bytes=0-) to a 512 KB chunk for instant start
-            const CHUNK_SIZE = 512 * 1024;
-            end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+            end = fileSize - 1;
           }
-        }
-
-        // Cap maximum single range chunk to 1 MB to ensure sub-100ms real-time delivery
-        const MAX_CHUNK = 1024 * 1024;
-        if (end - start + 1 > MAX_CHUNK) {
-          end = Math.min(start + MAX_CHUNK - 1, fileSize - 1);
         }
 
         if (start >= fileSize || start > end) {

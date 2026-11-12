@@ -41,7 +41,9 @@ const jamRoomSchema = new mongoose.Schema({
     isPlaying: { type: Boolean, default: false },
     position: { type: Number, default: 0 },
     timestamp: { type: Date, default: Date.now },
-    fromPeerId: String
+    fromPeerId: String,
+    version: { type: Number, default: 0 },
+    action: { type: String, default: 'init' }
   },
   updatedAt: {
     type: Date,

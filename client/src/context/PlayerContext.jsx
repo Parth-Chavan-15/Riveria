@@ -37,6 +37,10 @@ export function PlayerProvider({ children }) {
   const [isMuted, setIsMuted] = useState(false);
   const prevVolumeRef = useRef(80);
 
+  // Group Jam & Pseudo-Server Sync refs
+  const lastAppliedVersionRef = useRef(0);
+  const rateNudgeTimerRef = useRef(null);
+
   // Sync ref with state
   useEffect(() => {
     queueRef.current = queue;
@@ -122,7 +126,7 @@ export function PlayerProvider({ children }) {
     });
   }, [volume]);
 
-  const playTrack = useCallback(async (track, newQueue = null) => {
+  const playTrack = useCallback(async (track, newQueue = null, autoPlay = true, fromSync = false) => {
     if (!track) return;
     const source = sourceFor(track);
     if (!source) {
@@ -148,23 +152,45 @@ export function PlayerProvider({ children }) {
       setPosition(0);
     }
 
-    try {
-      audioCoordinator.claimExclusivePlayback(audio, 'player-context');
-      await audio.play();
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        setError('Playback was blocked. Tap play again to allow audio.');
+    if (autoPlay) {
+      try {
+        audioCoordinator.claimExclusivePlayback(audio, 'player-context');
+        await audio.play();
+        setIsPlaying(true);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError('Playback was blocked. Tap play again to allow audio.');
+        }
       }
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+
+    if (!fromSync) {
+      window.dispatchEvent(
+        new CustomEvent('reveria:jam-action', {
+          detail: {
+            action: 'track_change',
+            track,
+            isPlaying: autoPlay,
+            position: 0
+          }
+        })
+      );
     }
   }, [currentTrack, isMuted, volume]);
 
   const togglePlay = useCallback(async () => {
     if (!currentTrack) return;
     const audio = audioRef.current;
-    if (audio.paused) {
+    const nextIsPlaying = audio.paused;
+
+    if (nextIsPlaying) {
       try {
         audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
+        setIsPlaying(true);
       } catch (err) {
         if (err.name !== 'AbortError') {
           setError('Playback was blocked by the browser.');
@@ -172,7 +198,19 @@ export function PlayerProvider({ children }) {
       }
     } else {
       audio.pause();
+      setIsPlaying(false);
     }
+
+    window.dispatchEvent(
+      new CustomEvent('reveria:jam-action', {
+        detail: {
+          action: nextIsPlaying ? 'play' : 'pause',
+          track: currentTrack,
+          isPlaying: nextIsPlaying,
+          position: audio.currentTime || 0
+        }
+      })
+    );
   }, [currentTrack]);
 
   const playNext = useCallback(() => {
@@ -248,12 +286,25 @@ export function PlayerProvider({ children }) {
     };
   }, [playNext]);
 
-  const seek = useCallback((seconds) => {
+  const seek = useCallback((seconds, fromSync = false) => {
     const audio = audioRef.current;
     const target = Math.max(0, Math.min(seconds, Number.isFinite(audio.duration) ? audio.duration : seconds));
     audio.currentTime = target;
     setPosition(target);
-  }, []);
+
+    if (!fromSync && currentTrack) {
+      window.dispatchEvent(
+        new CustomEvent('reveria:jam-action', {
+          detail: {
+            action: 'seek',
+            track: currentTrack,
+            isPlaying: !audio.paused,
+            position: target
+          }
+        })
+      );
+    }
+  }, [currentTrack]);
 
   const mountLocalFiles = useCallback(async (files) => {
     const audioFiles = [...files].filter((file) => file.type.startsWith('audio/') || /\.(mp3|wav|ogg|aac|m4a|flac|webm)$/i.test(file.name));
@@ -308,29 +359,88 @@ export function PlayerProvider({ children }) {
 
   const syncPlayback = useCallback(async (payload, tracks = []) => {
     if (!payload) return;
-    const { trackId, position: remotePosition, isPlaying: remoteIsPlaying, track: directTrack, timestamp } = payload;
+    const {
+      trackId,
+      position: remotePosition,
+      isPlaying: remoteIsPlaying,
+      track: directTrack,
+      timestamp,
+      serverTime,
+      version,
+      action
+    } = payload;
+
+    // 1. Version filtering to prevent applying stale / duplicate states
+    const incVersion = Number(version) || 0;
+    if (incVersion > 0 && incVersion <= lastAppliedVersionRef.current) {
+      return; // Already processed this state!
+    }
+    if (incVersion > 0) {
+      lastAppliedVersionRef.current = incVersion;
+    }
+
     const allTracks = [...tracks, ...localTracksRef.current];
-    const track = allTracks.find((item) => item._id === trackId) || directTrack;
+    const track = allTracks.find((item) => item._id === (trackId || directTrack?._id)) || directTrack;
     if (!track) return;
 
-    const latencyOffset = timestamp ? Math.max(0, (Date.now() - new Date(timestamp).getTime()) / 1000) : 0;
-    const targetPos = Math.max(0, (remotePosition || 0) + (remoteIsPlaying ? latencyOffset : 0));
-
     const audio = audioRef.current;
+    const isTargetPlaying = Boolean(remoteIsPlaying);
+
+    // Calculate target position with server time elapsed offset
+    let targetPos = Math.max(0, Number(remotePosition) || 0);
+    if (isTargetPlaying) {
+      const now = Date.now();
+      const originTime = serverTime || (timestamp ? new Date(timestamp).getTime() : now);
+      const elapsed = Math.max(0, Math.min(120, (now - originTime) / 1000));
+      targetPos += elapsed;
+    }
+
+    // A. Track is different -> load new track with matching play state
     if (currentTrack?._id !== track._id) {
-      await playTrack(track, allTracks);
+      await playTrack(track, allTracks, isTargetPlaying, true /* fromSync */);
+      audio.currentTime = targetPos;
+      setPosition(targetPos);
+      return;
     }
 
-    if (Math.abs(audio.currentTime - targetPos) > 0.25) {
-      seek(targetPos);
+    // B. Track is the same
+    if (!isTargetPlaying) {
+      // Pause command from room
+      if (!audio.paused) {
+        audio.pause();
+        setIsPlaying(false);
+      }
+      if (Math.abs(audio.currentTime - targetPos) > 0.4) {
+        audio.currentTime = targetPos;
+        setPosition(targetPos);
+      }
+    } else {
+      // Play command from room
+      if (audio.paused) {
+        try {
+          audioCoordinator.claimExclusivePlayback(audio, 'player-context');
+          audio.currentTime = targetPos;
+          setPosition(targetPos);
+          await audio.play();
+          setIsPlaying(true);
+        } catch {}
+      } else {
+        // Already playing -> Smooth sync without audio buffer breaks
+        const drift = targetPos - audio.currentTime;
+        if (action === 'seek' || Math.abs(drift) > 2.0) {
+          audio.currentTime = targetPos;
+          setPosition(targetPos);
+        } else if (Math.abs(drift) > 0.25) {
+          // Smooth micro-nudge of playbackRate: inaudible, zero buffer flush!
+          if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+          audio.playbackRate = drift > 0 ? 1.05 : 0.95;
+          rateNudgeTimerRef.current = setTimeout(() => {
+            if (audioRef.current) audioRef.current.playbackRate = 1.0;
+          }, 1200);
+        }
+      }
     }
-
-    if (remoteIsPlaying && audio.paused) {
-      audio.play().catch(() => {});
-    } else if (!remoteIsPlaying && !audio.paused) {
-      audio.pause();
-    }
-  }, [currentTrack, playTrack, seek]);
+  }, [currentTrack, playTrack]);
 
   const value = useMemo(() => ({
     currentTrack,

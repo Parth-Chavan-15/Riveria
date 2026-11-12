@@ -43,7 +43,8 @@ exports.joinRoom = async (req, res, next) => {
       roomId: normalizedRoom,
       peers: room.peers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
       playlist: room.playlist,
-      currentPlayback: room.currentPlayback || null
+      currentPlayback: room.currentPlayback || null,
+      serverTime: Date.now()
     });
   } catch (err) {
     next(err);
@@ -149,7 +150,8 @@ exports.pollSignals = async (req, res, next) => {
       signals: signals.map((s) => ({ fromId: s.fromId, signal: s.signal })),
       peers,
       playlist,
-      currentPlayback: room?.currentPlayback || null
+      currentPlayback: room?.currentPlayback || null,
+      serverTime: Date.now()
     });
   } catch (err) {
     next(err);
@@ -180,16 +182,28 @@ exports.syncPlayback = async (req, res, next) => {
       return res.status(400).json({ ok: false, error: 'roomId and currentPlayback are required' });
     }
     const normalizedRoom = roomId.trim().toLowerCase();
+    const now = new Date();
+    const serverTimeMs = Date.now();
+
+    // Retrieve current room state to atomically increment version
+    const existing = await JamRoom.findOne({ roomId: normalizedRoom }).lean();
+    const prevVersion = existing?.currentPlayback?.version || 0;
+    const nextVersion = prevVersion + 1;
+
     const playbackWithTime = {
       ...currentPlayback,
-      timestamp: new Date()
+      version: nextVersion,
+      timestamp: now,
+      serverTime: serverTimeMs
     };
+
     await JamRoom.updateOne(
       { roomId: normalizedRoom },
-      { $set: { currentPlayback: playbackWithTime, updatedAt: new Date() } }
+      { $set: { currentPlayback: playbackWithTime, updatedAt: now } }
     );
+
     req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playback-sync', playbackWithTime);
-    res.json({ ok: true });
+    res.json({ ok: true, currentPlayback: playbackWithTime, serverTime: serverTimeMs });
   } catch (err) {
     next(err);
   }

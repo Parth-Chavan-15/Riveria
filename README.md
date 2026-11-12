@@ -63,14 +63,14 @@ flowchart TD
         MongoUsers[("User Accounts & Admin Roles")]
     end
 
-    Browser -->|"Public Web Routes"| VercelRouter
-    VercelRouter -->|"Web App Client"| Browser
-    VercelRouter -->|"Express 5 API"| Backend
-    Browser -->|"Album Covers"| StaticAssets
-    JamSession <-->|"Sub-50ms DataChannels"| RemotePeer["Remote Peer Browser"]
-    Backend -->|"Fetch Tracks"| MongoTracks
-    Backend -->|"Stream Audio Chunks"| MongoGridFS
-    Backend -->|"RFC 9110 Stream"| ByteStream
+    Browser -->|Public Web Routes| VercelRouter
+    VercelRouter -->|Web App Client| Browser
+    VercelRouter -->|Express 5 API| Backend
+    Browser -->|Album Covers| StaticAssets
+    JamSession ---|Sub-50ms DataChannels| RemotePeer["Remote Peer Browser"]
+    Backend -->|Fetch Tracks| MongoTracks
+    Backend -->|Stream Audio Chunks| MongoGridFS
+    Backend -->|RFC 9110 Stream| ByteStream
 ```
 
 ### 1. Real-Time Multi-Threaded Audio Streaming (0ms Instant Playback)
@@ -79,13 +79,13 @@ Riveria eliminates audio buffering delays through a two-fold streaming pipeline:
 * **Client-Side Parallel Preloading**: On landing page arrival, background threads parallel-prime the initial audio buffers for all five movement tracks. When you press play or journey across sections, playback begins instantaneously without network hesitation.
 
 ### 2. Scroll-Driven Cinematic Musical Odyssey
-As you scroll down the landing page, Riveria transitions through five cinematic Acts inspired by high-end interactive websites:
-* **Act I: The Awakening (Hero / The Overture)** — Warm melodic guitar and golden ambient veils (*Sunflower*).
-* **Act II: The Sovereign Haven (Philosophy)** — Rhythmic pulse and cybernetic cyan tones (*Thunder*).
-* **Act III: The Living Chamber (Console Deck)** — Full interactive glassmorphic player deck, rotating vinyl core, dynamic scrubber, and live spectrum waves (*Believer*).
-* **Act IV: Architecture of Restraint (Engineering)** — Crisp acoustic clarity and emerald-teal architectural pillars (*Birds*).
-* **Act V: The Daydream Horizon (The Reverie)** — Violet dreamscapes and the invitation to step into sovereign listening (*Happier*).
-* **Sync-Scroll Mode**: When sound is active, tracks crossfade smoothly (fading down over 150ms, switching primed audio, and fading up over 250ms) as you explore each Act. You can toggle Sync-Scroll or control playback anytime from the floating bottom audio dock.
+As you scroll down the landing page, Riveria transitions through five movements inspired by high-end design houses:
+* **Overture** — Warm melodic acoustic resonance and gentle golden ambient glow (*Sunflower*).
+* **Philosophy** — Tender, delicate stillness and pure contemplation (*Birds*).
+* **Console** — Dynamic percussive pulse and bass-driven acoustic test for the Living Chamber (*Thunder*).
+* **Architecture** — Resolute engineering, sovereign conviction, and uncompromising privacy (*Believer*).
+* **Reverie** — Cathartic resolution and uplifting departure into infinite reverie (*Happier*).
+* **Sync-Scroll Mode**: When sound is active, tracks transition sequentially (cosine fade-out to complete silence over 350ms, followed by a sine fade-in to master volume over 450ms) as you explore each movement. You can toggle Sync-Scroll or control playback anytime from the floating bottom audio dock.
 
 ### 3. Private Local Music Mounts (Zero Server Uploads)
 Pick any music folder on your computer. Riveria creates instantaneous, in-memory browser audio links (`Object URLs`). Your songs play instantly with pure, original sound quality right from your drive—no server upload, no monthly storage fees, and zero data leakage.

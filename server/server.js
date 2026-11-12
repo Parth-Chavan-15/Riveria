@@ -63,12 +63,27 @@ io.on('connection', (socket) => {
   attachWebRtcHandlers(io, socket);
 });
 
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/api/health', (req, res) => {
   const databaseReady = mongoose.connection.readyState === 1;
   res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ok' : 'degraded', database: databaseReady ? 'connected' : 'disconnected' });
 });
+app.get('/health', (req, res) => {
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ok' : 'degraded', database: databaseReady ? 'connected' : 'disconnected' });
+});
 app.use('/api/tracks', trackRoutes);
+app.use('/tracks', trackRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
@@ -94,4 +109,7 @@ if (require.main === module) start().catch((error) => {
   process.exit(1);
 });
 
-module.exports = { app, server, start };
+module.exports = app;
+module.exports.app = app;
+module.exports.server = server;
+module.exports.start = start;

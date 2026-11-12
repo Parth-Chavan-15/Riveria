@@ -41,6 +41,7 @@ export default function WebRTCSession() {
   const signalingModeRef = useRef('socket'); // 'socket' or 'rest'
   const activeIncomingTransferRef = useRef(null);
   const joinedRoomRef = useRef('');
+  const isIncomingSyncRef = useRef(false);
 
   const [roomId, setRoomId] = useState(() => searchParams.get('room')?.toUpperCase() || '');
   const [joinedRoom, setJoinedRoom] = useState('');
@@ -359,6 +360,16 @@ export default function WebRTCSession() {
         socket.on('jam:signal', async ({ fromId, signal }) => {
           await processSignal(fromId, signal);
         });
+
+        socket.on('jam:playback-sync', (payload) => {
+          handlePlaybackSync(payload);
+        });
+
+        socket.on('jam:playlist-sync', ({ playlist }) => {
+          if (Array.isArray(playlist)) {
+            handlePlaylistSync(playlist);
+          }
+        });
       } catch {}
     } else {
       signalingModeRef.current = 'rest';
@@ -382,17 +393,32 @@ export default function WebRTCSession() {
 
     const poll = async () => {
       try {
-        const data = await apiRequest(`/session/poll?roomId=${joinedRoom}&peerId=${myPeerIdRef.current}`);
+        const activeRoom = joinedRoomRef.current || joinedRoom;
+        if (!activeRoom) return;
+
+        const data = await apiRequest(`/session/poll?roomId=${activeRoom}&peerId=${myPeerIdRef.current}`);
         if (!data?.ok) return;
 
-        // Process any waiting signals
+        // 1. Process any waiting signals
         if (Array.isArray(data.signals) && data.signals.length > 0) {
           for (const s of data.signals) {
             await processSignal(s.fromId, s.signal);
           }
         }
 
-        // Auto-synchronize playback if pseudo-server holds updated room state
+        // 2. Synchronize Collaborative Playlist if server has updates
+        if (Array.isArray(data.playlist)) {
+          setCollabPlaylist((prev) => {
+            const prevIds = prev.map((p) => p.id || p._id).join(',');
+            const nextIds = data.playlist.map((p) => p.id || p._id).join(',');
+            if (prevIds !== nextIds) {
+              return data.playlist;
+            }
+            return prev;
+          });
+        }
+
+        // 3. Auto-synchronize playback if pseudo-server holds updated room state
         if (data.currentPlayback) {
           handlePlaybackSync({
             ...data.currentPlayback,
@@ -400,7 +426,7 @@ export default function WebRTCSession() {
           });
         }
 
-        // Detect new peers that we haven't handshaked with
+        // 4. Detect new peers that we haven't handshaked with
         if (Array.isArray(data.peers)) {
           for (const remote of data.peers) {
             if (remote.peerId !== myPeerIdRef.current && !peersRef.current.has(remote.peerId)) {
@@ -456,10 +482,12 @@ export default function WebRTCSession() {
       setRoomId(targetCode);
       if (result.playlist) setCollabPlaylist(result.playlist);
       if (result.currentPlayback) {
-        handlePlaybackSync({
-          ...result.currentPlayback,
-          serverTime: result.serverTime
-        });
+        try {
+          handlePlaybackSync({
+            ...result.currentPlayback,
+            serverTime: result.serverTime
+          });
+        } catch {}
       }
 
       setStatus(`Connected to jam "${targetCode}". Handshaking with ${result.peers.length} active peer(s)…`);
@@ -511,17 +539,20 @@ export default function WebRTCSession() {
   // Automated Real-Time Playback Synchronization driven by user transport actions
   useEffect(() => {
     const onJamAction = (e) => {
+      if (isIncomingSyncRef.current) return;
       const detail = e.detail;
       const activeRoom = joinedRoomRef.current || joinedRoom;
       if (!activeRoom || !detail?.track) return;
 
+      const targetId = detail.track._id || detail.track.id;
       const actionPayload = {
         type: 'PLAYBACK_SYNC',
         roomId: activeRoom,
         action: detail.action || 'update',
-        trackId: detail.track._id,
+        trackId: targetId,
         track: {
-          _id: detail.track._id,
+          _id: targetId,
+          id: targetId,
           title: detail.track.title,
           artist: detail.track.artist,
           duration: detail.track.duration,
@@ -567,27 +598,41 @@ export default function WebRTCSession() {
   // Broadcast Collab Playlist to All Peers
   const broadcastPlaylist = useCallback((newPlaylist) => {
     setCollabPlaylist(newPlaylist);
+    const activeRoom = joinedRoomRef.current || joinedRoom;
+    if (!activeRoom) return;
+
     peersRef.current.forEach(({ channel }) => {
       if (channel?.readyState === 'open') {
-        channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: newPlaylist }));
+        try {
+          channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: newPlaylist }));
+        } catch {}
       }
     });
+
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('jam:playlist-sync', { roomId: activeRoom, playlist: newPlaylist });
+    }
 
     // Also persist in room state on server
     apiRequest('/session/playlist', {
       method: 'POST',
-      body: JSON.stringify({ roomId: joinedRoom, playlist: newPlaylist })
+      body: JSON.stringify({ roomId: activeRoom, playlist: newPlaylist })
     }).catch(() => {});
   }, [joinedRoom]);
 
   // Add Cloud Track to Collaborative Playlist
   const handleAddCloudTrack = (track) => {
+    const trackId = track._id || track.id;
     const item = {
-      id: track._id,
+      id: trackId,
+      _id: trackId,
       title: track.title,
       artist: track.artist,
       duration: track.duration,
       type: 'Cloud',
+      audioSrc: track.audioSrc,
+      imageSrc: track.imageSrc,
+      imageColor: track.imageColor,
       addedBy: user?.email || 'Listener'
     };
     const next = [...collabPlaylist, item];
@@ -598,8 +643,10 @@ export default function WebRTCSession() {
 
   // Add Local Track to Collaborative Playlist (Zero Server Logging!)
   const handleAddLocalTrack = (track) => {
+    const trackId = track._id || track.id;
     const item = {
-      id: track._id,
+      id: trackId,
+      _id: trackId,
       title: track.title,
       artist: track.artist || 'This device',
       duration: track.duration || 'Local',
@@ -614,8 +661,9 @@ export default function WebRTCSession() {
 
   // Play a track from Collaborative Playlist
   const handlePlayCollabTrack = useCallback(async (item) => {
-    const localMatch = player.localTracks.find((t) => t._id === item.id);
-    const cloudMatch = tracksRef.current.find((t) => t._id === item.id);
+    const trackId = item.id || item._id;
+    const localMatch = player.localTracks.find((t) => (t._id || t.id) === trackId);
+    const cloudMatch = tracksRef.current.find((t) => (t._id || t.id) === trackId);
 
     if (localMatch) {
       // 1. Play locally (triggers reveria:jam-action)
@@ -626,15 +674,31 @@ export default function WebRTCSession() {
       // Cloud track available from Atlas RFC 9110 stream (triggers reveria:jam-action)
       player.playTrack(cloudMatch, [...tracksRef.current, ...player.localTracks]);
     } else {
-      // Local track hosted on another peer: send request to host to stream it to room
-      peersRef.current.forEach(({ channel }) => {
-        if (channel?.readyState === 'open') {
-          channel.send(JSON.stringify({ type: 'REQUEST_PLAY_TRACK', trackId: item.id }));
-        }
-      });
-      addLog('P2P_FILE', `Requested peer device to stream "${item.title}" to the room...`);
+      const fallbackCloud = item.type === 'Cloud' || !item.type ? {
+        _id: trackId,
+        id: trackId,
+        title: item.title,
+        artist: item.artist,
+        duration: item.duration,
+        type: 'Cloud',
+        audioSrc: item.audioSrc || `/tracks/${trackId}/stream`,
+        imageSrc: item.imageSrc || '/covers/default.png',
+        imageColor: item.imageColor || 'bg-gradient-to-br from-purple-600 to-indigo-950'
+      } : null;
+
+      if (fallbackCloud) {
+        player.playTrack(fallbackCloud, [...tracksRef.current, ...collabPlaylist]);
+      } else {
+        // Local track hosted on another peer: send request to host to stream it to room
+        peersRef.current.forEach(({ channel }) => {
+          if (channel?.readyState === 'open') {
+            channel.send(JSON.stringify({ type: 'REQUEST_PLAY_TRACK', trackId }));
+          }
+        });
+        addLog('P2P_FILE', `Requested peer device to stream "${item.title}" to the room...`);
+      }
     }
-  }, [player, streamLocalTrackToPeers, addLog]);
+  }, [player, streamLocalTrackToPeers, collabPlaylist, addLog]);
 
   const copyRoomInvite = () => {
     if (!joinedRoom) return;

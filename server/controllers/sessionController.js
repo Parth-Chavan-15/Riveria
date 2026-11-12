@@ -74,28 +74,6 @@ exports.sendSignal = async (req, res, next) => {
   }
 };
 
-exports.syncPlayback = async (req, res, next) => {
-  try {
-    const { roomId, currentPlayback } = req.body;
-    if (!roomId || !currentPlayback) {
-      return res.status(400).json({ ok: false, error: 'roomId and currentPlayback are required' });
-    }
-    const normalizedRoom = roomId.trim().toLowerCase();
-    const playbackWithTime = {
-      ...currentPlayback,
-      timestamp: new Date()
-    };
-    await JamRoom.updateOne(
-      { roomId: normalizedRoom },
-      { $set: { currentPlayback: playbackWithTime, updatedAt: new Date() } }
-    );
-    req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playback-sync', playbackWithTime);
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-};
-
 exports.pollSignals = async (req, res, next) => {
   try {
     const { roomId, peerId } = req.query;
@@ -190,8 +168,17 @@ exports.syncPlayback = async (req, res, next) => {
     const prevVersion = existing?.currentPlayback?.version || 0;
     const nextVersion = prevVersion + 1;
 
+    const targetTrackId = currentPlayback.trackId || currentPlayback.track?._id || currentPlayback.track?.id;
+    const trackObj = currentPlayback.track ? {
+      ...currentPlayback.track,
+      _id: targetTrackId,
+      id: targetTrackId
+    } : null;
+
     const playbackWithTime = {
       ...currentPlayback,
+      trackId: targetTrackId,
+      track: trackObj,
       version: nextVersion,
       timestamp: now,
       serverTime: serverTimeMs
@@ -199,7 +186,8 @@ exports.syncPlayback = async (req, res, next) => {
 
     await JamRoom.updateOne(
       { roomId: normalizedRoom },
-      { $set: { currentPlayback: playbackWithTime, updatedAt: now } }
+      { $set: { currentPlayback: playbackWithTime, updatedAt: now } },
+      { upsert: true }
     );
 
     req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playback-sync', playbackWithTime);
@@ -218,8 +206,10 @@ exports.updatePlaylist = async (req, res, next) => {
     const normalizedRoom = roomId.trim().toLowerCase();
     await JamRoom.updateOne(
       { roomId: normalizedRoom },
-      { $set: { playlist, updatedAt: new Date() } }
+      { $set: { playlist, updatedAt: new Date() } },
+      { upsert: true }
     );
+    req.app.get('io')?.to(`jam:${normalizedRoom}`).emit('jam:playlist-sync', { playlist });
     res.json({ ok: true, playlist });
   } catch (err) {
     next(err);

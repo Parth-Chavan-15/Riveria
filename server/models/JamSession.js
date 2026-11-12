@@ -28,8 +28,10 @@ const jamRoomSchema = new mongoose.Schema({
     }
   ],
   currentPlayback: {
+    trackId: String,
     track: {
       _id: String,
+      id: String,
       title: String,
       artist: String,
       duration: String,
@@ -41,6 +43,7 @@ const jamRoomSchema = new mongoose.Schema({
     isPlaying: { type: Boolean, default: false },
     position: { type: Number, default: 0 },
     timestamp: { type: Date, default: Date.now },
+    serverTime: { type: Number, default: Date.now },
     fromPeerId: String,
     version: { type: Number, default: 0 },
     action: { type: String, default: 'init' }

@@ -7,9 +7,11 @@ import { extractAudioMetadata } from '../utils/audioMetadata';
 function sourceFor(track) {
   if (!track) return '';
   if (track.localUrl) return track.localUrl;
-  if (track._id && track.type !== 'Local') return apiUrl(`/tracks/${track._id}/stream`);
-  if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
+  const tid = track._id || track.id;
+  if (tid && track.type !== 'Local') return apiUrl(`/tracks/${tid}/stream`);
+  if (track.audioFile?.filename && tid) return apiUrl(`/tracks/${tid}/stream`);
   if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) return track.audioSrc;
+  if (tid) return apiUrl(`/tracks/${tid}/stream`);
   return '';
 }
 
@@ -143,7 +145,8 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     setError('');
 
-    if (currentTrack?._id !== track._id) {
+    const isDifferent = (currentTrack?._id || currentTrack?.id) !== (track._id || track.id);
+    if (isDifferent) {
       audio.src = source;
       audio.preload = 'auto';
       audio.volume = isMuted ? 0 : volume / 100;
@@ -379,9 +382,15 @@ export function PlayerProvider({ children }) {
       lastAppliedVersionRef.current = incVersion;
     }
 
+    const targetId = trackId || directTrack?._id || directTrack?.id;
     const allTracks = [...tracks, ...localTracksRef.current];
-    const track = allTracks.find((item) => item._id === (trackId || directTrack?._id)) || directTrack;
+    const matchedTrack = allTracks.find((item) => (item._id || item.id) === targetId);
+    const track = matchedTrack || directTrack;
     if (!track) return;
+
+    // Normalize track IDs
+    track._id = track._id || targetId;
+    track.id = track.id || targetId;
 
     const audio = audioRef.current;
     const isTargetPlaying = Boolean(remoteIsPlaying);
@@ -395,11 +404,25 @@ export function PlayerProvider({ children }) {
       targetPos += elapsed;
     }
 
+    const currentId = currentTrack?._id || currentTrack?.id;
     // A. Track is different -> load new track with matching play state
-    if (currentTrack?._id !== track._id) {
+    if (currentId !== targetId) {
       await playTrack(track, allTracks, isTargetPlaying, true /* fromSync */);
-      audio.currentTime = targetPos;
-      setPosition(targetPos);
+      if (targetPos > 0) {
+        if (audio.readyState >= 1) {
+          audio.currentTime = targetPos;
+          setPosition(targetPos);
+        } else {
+          const onLoaded = () => {
+            try {
+              audio.currentTime = targetPos;
+              setPosition(targetPos);
+            } catch {}
+            audio.removeEventListener('loadedmetadata', onLoaded);
+          };
+          audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+        }
+      }
       return;
     }
 

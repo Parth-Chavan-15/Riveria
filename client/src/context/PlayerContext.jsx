@@ -72,6 +72,42 @@ export function PlayerProvider({ children }) {
       : clockSkewRef.current * 0.7 + median * 0.3;
   }, []);
 
+  const correctDrift = useCallback((remotePos) => {
+    const audio = audioRef.current;
+    if (!audio || audio.paused || !isPlayingRef.current) return;
+    if (typeof remotePos !== 'number' || !Number.isFinite(remotePos)) return;
+
+    const drift = remotePos - audio.currentTime;
+    // Deadband <= 25ms: imperceptible Haas precedence effect, audio stays 1.0x
+    if (Math.abs(drift) <= 0.025) {
+      if (audio.playbackRate !== 1.0) {
+        audio.playbackRate = 1.0;
+      }
+      return;
+    }
+
+    // Hard snap if drift > 0.35s (350ms) e.g. after network stall, tab minimize, or seek
+    if (Math.abs(drift) > 0.35) {
+      audio.currentTime = remotePos;
+      setPosition(remotePos);
+      if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+      audio.playbackRate = 1.0;
+      return;
+    }
+
+    // Micro-rate adjustment (25ms - 350ms): phase-locks without pitch distortion
+    const now = Date.now();
+    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 400)) {
+      lastRateNudgeTimeRef.current = now;
+      if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+      const rateNudge = Math.max(-0.025, Math.min(0.025, drift * 0.1));
+      audio.playbackRate = 1.0 + rateNudge;
+      rateNudgeTimerRef.current = setTimeout(() => {
+        if (audioRef.current) audioRef.current.playbackRate = 1.0;
+      }, 500);
+    }
+  }, []);
+
   const resetRoomVersion = useCallback((roomId) => {
     if (roomId) {
       roomVersionsRef.current.delete(roomId.toLowerCase());
@@ -588,14 +624,27 @@ export function PlayerProvider({ children }) {
       // Scheduled Start Time Alignment (Acoustic Phase-Lock)
       const targetTime = Number(scheduledStartTime) || (nowServerEst + 40);
       const delayMs = targetTime - nowServerEst;
+      const isHidden = typeof document !== 'undefined' && document.hidden;
 
       if (isTargetPlaying) {
-        if (delayMs > 5 && delayMs < 100) {
-          // Tight lookahead alignment (5-100ms) for simultaneous start
+        if (!isHidden && delayMs > 5 && delayMs < 100) {
+          // Tight lookahead alignment (5-100ms) for simultaneous start in active window
           scheduledTimerRef.current = setTimeout(() => {
             try {
               audioCoordinator.claimExclusivePlayback(audio, 'player-context');
-              audio.currentTime = targetPos;
+              if (targetPos > 0) {
+                if (audio.readyState >= 1) {
+                  audio.currentTime = targetPos;
+                } else {
+                  const onMeta = () => {
+                    try { audio.currentTime = targetPos; } catch {}
+                    audio.removeEventListener('loadedmetadata', onMeta);
+                  };
+                  audio.addEventListener('loadedmetadata', onMeta);
+                }
+              } else {
+                audio.currentTime = 0;
+              }
               setPosition(targetPos);
               audio.play().then(() => {
                 setIsAutoplayBlocked(false);
@@ -606,10 +655,22 @@ export function PlayerProvider({ children }) {
             } catch {}
           }, delayMs);
         } else {
-          // Play immediately without delay
+          // Play immediately without delay (for minimized windows or delay <= 0)
           try {
             audioCoordinator.claimExclusivePlayback(audio, 'player-context');
-            audio.currentTime = targetPos;
+            if (targetPos > 0) {
+              if (audio.readyState >= 1) {
+                audio.currentTime = targetPos;
+              } else {
+                const onMeta = () => {
+                  try { audio.currentTime = targetPos; } catch {}
+                  audio.removeEventListener('loadedmetadata', onMeta);
+                };
+                audio.addEventListener('loadedmetadata', onMeta);
+              }
+            } else {
+              audio.currentTime = 0;
+            }
             setPosition(targetPos);
             audio.play().then(() => {
               setIsAutoplayBlocked(false);
@@ -620,7 +681,19 @@ export function PlayerProvider({ children }) {
           } catch {}
         }
       } else {
-        audio.currentTime = targetPos;
+        if (targetPos > 0) {
+          if (audio.readyState >= 1) {
+            audio.currentTime = targetPos;
+          } else {
+            const onMeta = () => {
+              try { audio.currentTime = targetPos; } catch {}
+              audio.removeEventListener('loadedmetadata', onMeta);
+            };
+            audio.addEventListener('loadedmetadata', onMeta);
+          }
+        } else {
+          audio.currentTime = 0;
+        }
         setPosition(targetPos);
         audio.pause();
         setIsPlaying(false);
@@ -632,6 +705,23 @@ export function PlayerProvider({ children }) {
     const isNewAction = incVersion > 0 && incVersion > lastRoomVersion;
     if (isNewAction) {
       roomVersionsRef.current.set(roomKey, incVersion);
+    }
+
+    // Explicit seek command: snap immediately without delay or rate nudging
+    if (isExplicitSeek) {
+      if (scheduledTimerRef.current) clearTimeout(scheduledTimerRef.current);
+      audio.currentTime = targetPos;
+      setPosition(targetPos);
+      if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
+      audio.playbackRate = 1.0;
+      if (isTargetPlaying && audio.paused) {
+        try {
+          audioCoordinator.claimExclusivePlayback(audio, 'player-context');
+          audio.play().then(() => setIsAutoplayBlocked(false)).catch(() => {});
+          setIsPlaying(true);
+        } catch {}
+      }
+      return;
     }
 
     if (!isTargetPlaying) {
@@ -650,9 +740,10 @@ export function PlayerProvider({ children }) {
     } else {
       // Play command from room
       if (audio.paused) {
+        const isHidden = typeof document !== 'undefined' && document.hidden;
         const targetTime = Number(scheduledStartTime) || (nowServerEst + 40);
         const delayMs = targetTime - nowServerEst;
-        if (delayMs > 5 && delayMs < 100) {
+        if (!isHidden && delayMs > 5 && delayMs < 100) {
           scheduledTimerRef.current = setTimeout(() => {
             try {
               audioCoordinator.claimExclusivePlayback(audio, 'player-context');
@@ -680,38 +771,11 @@ export function PlayerProvider({ children }) {
           } catch {}
         }
       } else {
-        // Continuous Phase-Locked Loop (PLL) Single-Speaker Engine:
-        const drift = targetPos - audio.currentTime;
-        const isExplicitSeek = action === 'seek';
-
-        if (isExplicitSeek || Math.abs(drift) > 0.8) {
-          // Hard snap ONLY on explicit seek or significant drift (>800ms)
-          audio.currentTime = targetPos;
-          setPosition(targetPos);
-          if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
-          audio.playbackRate = 1.0;
-        } else if (Math.abs(drift) > 0.040) {
-          // Smooth deadband: if drift is <= 40ms, do NOT touch playbackRate!
-          // If drift is between 40ms and 800ms, apply a gentle micro-nudge throttled to once every 2s
-          const now = Date.now();
-          if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 2000)) {
-            lastRateNudgeTimeRef.current = now;
-            if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
-            const rateAdjustment = Math.max(-0.015, Math.min(0.015, drift * 0.05));
-            audio.playbackRate = 1.0 + rateAdjustment;
-            rateNudgeTimerRef.current = setTimeout(() => {
-              if (audioRef.current) audioRef.current.playbackRate = 1.0;
-            }, 800);
-          }
-        } else {
-          // Locked within 40ms Haas precedence threshold
-          if (audio.playbackRate !== 1.0) {
-            audio.playbackRate = 1.0;
-          }
-        }
+        // Continuous Dynamic Phase-Lock Loop
+        correctDrift(targetPos);
       }
     }
-  }, [currentTrack, playTrack]);
+  }, [currentTrack, playTrack, correctDrift]);
 
   const value = useMemo(() => ({
     currentTrack,
@@ -740,8 +804,10 @@ export function PlayerProvider({ children }) {
     syncPlayback,
     resetRoomVersion,
     calibrateClock,
+    correctDrift,
     isAutoplayBlocked,
-    clockSkew: clockSkewRef.current
+    clockSkew: clockSkewRef.current,
+    getAudioCurrentTime: () => audioRef.current?.currentTime || 0
   }), [
     currentTrack,
     isPlaying,
@@ -769,7 +835,8 @@ export function PlayerProvider({ children }) {
     removeLocalTrack,
     syncPlayback,
     resetRoomVersion,
-    calibrateClock
+    calibrateClock,
+    correctDrift
   ]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

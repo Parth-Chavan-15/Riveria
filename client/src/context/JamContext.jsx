@@ -27,6 +27,37 @@ function generateRoomCode() {
   return `${adj}-${num}`;
 }
 
+// Background-resilient Web Worker timer (prevents browser throttle to 1000ms+ when tab is minimized)
+function createWorkerTimer(callback, ms) {
+  if (typeof window !== 'undefined' && typeof Worker !== 'undefined' && typeof Blob !== 'undefined') {
+    try {
+      const blob = new Blob([`
+        let timer = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            timer = setInterval(function() {
+              self.postMessage('tick');
+            }, ${ms});
+          } else if (e.data === 'stop') {
+            if (timer) clearInterval(timer);
+          }
+        };
+      `], { type: 'application/javascript' });
+      const worker = new Worker(URL.createObjectURL(blob));
+      worker.onmessage = () => callback();
+      worker.postMessage('start');
+      return () => {
+        try {
+          worker.postMessage('stop');
+          worker.terminate();
+        } catch {}
+      };
+    } catch {}
+  }
+  const id = setInterval(callback, ms);
+  return () => clearInterval(id);
+}
+
 const JamContext = createContext(null);
 
 export function JamProvider({ children }) {
@@ -286,6 +317,11 @@ export function JamProvider({ children }) {
             handlePlaybackSync(packet);
           } else if (packet.type === 'PLAYLIST_SYNC') {
             handlePlaylistSync(packet.playlist);
+          } else if (packet.type === 'PLAYBACK_HEARTBEAT') {
+            const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
+            if (packet.trackId === currentTrackId && playerRef.current?.isPlaying && typeof packet.position === 'number') {
+              playerRef.current?.correctDrift?.(packet.position);
+            }
           } else if (packet.type === 'START_AUDIO_TRANSFER') {
             activeIncomingTransferRef.current = {
               trackId: packet.trackId,
@@ -532,7 +568,7 @@ export function JamProvider({ children }) {
           });
         }
 
-        // 3. Auto-synchronize playback ONLY when room state version changes or track differs
+        // 3. Auto-synchronize playback: trigger full sync on version or track change, continuous drift lock during stream
         if (data.currentPlayback) {
           const incomingVersion = Number(data.currentPlayback.version) || 0;
           const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
@@ -546,6 +582,13 @@ export function JamProvider({ children }) {
               roomId: curRoom,
               currentServerTime: data.serverTime
             });
+          } else if (data.currentPlayback.isPlaying && !isDifferentTrack && playerRef.current?.isPlaying) {
+            // Continuous Cristian-calibrated clock drift lock during ongoing playback
+            const recordedServerTime = Number(data.currentPlayback.serverTime || data.currentPlayback.timestamp) || 0;
+            const originTime = recordedServerTime || Number(data.currentPlayback.timestamp) || 0;
+            const elapsed = Math.max(0, (data.serverTime - originTime) / 1000);
+            const remotePos = (Number(data.currentPlayback.position) || 0) + elapsed;
+            playerRef.current?.correctDrift?.(remotePos);
           }
         }
 
@@ -579,12 +622,45 @@ export function JamProvider({ children }) {
     };
 
     poll();
-    pollTimerRef.current = setInterval(poll, 800);
+    const stopPolling = createWorkerTimer(poll, 800);
 
     return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      stopPolling();
     };
   }, [joinedRoom, createPeer, dispatchSignal, processSignal, handlePlaybackSync, handlePlaylistSync, addLog]);
+
+  // WebRTC Real-Time Playback Heartbeat (Direct P2P zero-drift phase lock)
+  useEffect(() => {
+    const activeRoom = joinedRoomRef.current || joinedRoom;
+    if (!activeRoom) return;
+
+    const sendHeartbeat = () => {
+      if (!playerRef.current?.isPlaying || !playerRef.current?.currentTrack) return;
+      const currentTrack = playerRef.current.currentTrack;
+      const trackId = currentTrack._id || currentTrack.id;
+      const currentTime = playerRef.current.getAudioCurrentTime ? playerRef.current.getAudioCurrentTime() : playerRef.current.position;
+
+      const heartbeat = JSON.stringify({
+        type: 'PLAYBACK_HEARTBEAT',
+        trackId,
+        position: currentTime,
+        timestamp: Date.now()
+      });
+
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          try {
+            channel.send(heartbeat);
+          } catch {}
+        }
+      });
+    };
+
+    const stopHeartbeat = createWorkerTimer(sendHeartbeat, 1000);
+    return () => {
+      stopHeartbeat();
+    };
+  }, [joinedRoom]);
 
   // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab or changes network!
   useEffect(() => {

@@ -17,16 +17,7 @@ const jamRoomSchema = new mongoose.Schema({
       lastSeen: { type: Date, default: Date.now }
     }
   ],
-  playlist: [
-    {
-      id: String,
-      title: String,
-      artist: String,
-      duration: String,
-      type: String, // 'Cloud' or 'Local'
-      addedBy: String
-    }
-  ],
+  playlist: [mongoose.Schema.Types.Mixed],
   currentPlayback: {
     trackId: String,
     track: { type: mongoose.Schema.Types.Mixed },

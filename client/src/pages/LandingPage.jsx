@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
@@ -200,7 +200,21 @@ function fadeIn(audioElem, targetVol, durationMs = 400, isCurrentTx = () => true
 
 export default function LandingPage() {
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const destination = token ? '/' : '/auth';
+
+  // Automatically route room invitations
+  useEffect(() => {
+    const room = searchParams.get('room');
+    if (room) {
+      if (token) {
+        navigate(`/session?room=${encodeURIComponent(room.toUpperCase())}`, { replace: true });
+      } else {
+        navigate(`/auth?redirect=${encodeURIComponent(`/session?room=${room.toUpperCase()}`)}`, { replace: true });
+      }
+    }
+  }, [searchParams, token, navigate]);
 
   // Dynamic Cloud Audio & Playback State - Seeded with static movement tracks for instant 0ms start
   const [cloudTracks, setCloudTracks] = useState(STATIC_MOVEMENT_TRACKS);

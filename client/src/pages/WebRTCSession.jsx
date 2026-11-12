@@ -638,7 +638,7 @@ export default function WebRTCSession() {
 
   const copyRoomInvite = () => {
     if (!joinedRoom) return;
-    const inviteUrl = `${window.location.origin}/session?room=${joinedRoom}`;
+    const inviteUrl = `${window.location.origin}/?room=${joinedRoom}`;
     navigator.clipboard?.writeText(inviteUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import TrackCard from '../components/TrackCard';
 import { apiRequest, getAccessToken } from '../services/api';
@@ -14,6 +15,8 @@ const GRADIENT_PRESETS = [
 ];
 
 export default function Dashboard() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [tracks, setTracks] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
@@ -22,6 +25,14 @@ export default function Dashboard() {
   const { localTracks } = usePlayer();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+
+  // Automatically transition to WebRTC Session if invited via room code link
+  useEffect(() => {
+    const roomParam = searchParams.get('room');
+    if (roomParam) {
+      navigate(`/session?room=${encodeURIComponent(roomParam.toUpperCase())}`, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   // Admin Upload Modal State
   const [showUploadModal, setShowUploadModal] = useState(false);

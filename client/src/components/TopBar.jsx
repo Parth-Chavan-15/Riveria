@@ -12,7 +12,18 @@ function TopBar() {
     const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
-        const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, { path: '/socket.io', auth: { token: getAccessToken() } });
+        const socketUrl = import.meta.env.VITE_SOCKET_URL;
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const targetUrl = socketUrl || (isLocal ? window.location.origin : null);
+        if (!targetUrl) return;
+
+        const socket = io(targetUrl, {
+            path: '/socket.io',
+            auth: { token: getAccessToken() },
+            reconnectionAttempts: 2,
+            timeout: 3000
+        });
+
         // Listen for incoming notifications from the backend
         socket.on('notification', (newNotification) => {
             setNotifications((prev) => [newNotification, ...prev]);

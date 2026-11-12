@@ -36,6 +36,8 @@ export default function LandingPage() {
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
   const [totalDurationFormatted, setTotalDurationFormatted] = useState('00:00');
   const audioRef = useRef(null);
+  const currentTrackIdRef = useRef(null);
+  const cloudTracksRef = useRef([]);
   const [waveAmplitudes, setWaveAmplitudes] = useState([
     24, 42, 68, 55, 88, 70, 95, 82, 60, 75, 48, 30, 65, 80, 52, 34,
   ]);
@@ -79,11 +81,12 @@ export default function LandingPage() {
     }
   }, [volume]);
 
-  // Synchronize audio element lifecycle
+  // Synchronize audio element lifecycle once on mount
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
     audio.volume = 0.8;
+    audio.preload = 'metadata';
 
     const onTime = () => {
       if (audio.duration && isFinite(audio.duration)) {
@@ -101,7 +104,7 @@ export default function LandingPage() {
     const onPause = () => setIsPlaying(false);
     const onEnded = () => {
       setIsPlaying(false);
-      setCurrentTrackIndex((prev) => (prev + 1) % (cloudTracks.length || 1));
+      setCurrentTrackIndex((prev) => (prev + 1) % (cloudTracksRef.current.length || 1));
     };
 
     audio.addEventListener('timeupdate', onTime);
@@ -117,6 +120,20 @@ export default function LandingPage() {
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
     };
+  }, []);
+
+  // Pre-assign first track when cloud tracks load so first click is instantaneous
+  useEffect(() => {
+    cloudTracksRef.current = cloudTracks;
+    if (cloudTracks.length > 0 && audioRef.current && !currentTrackIdRef.current) {
+      const firstTrack = cloudTracks[0];
+      const url = getAudioUrl(firstTrack);
+      if (url) {
+        audioRef.current.src = url;
+        currentTrackIdRef.current = firstTrack._id;
+        audioRef.current.load();
+      }
+    }
   }, [cloudTracks]);
 
   // Handle Play/Pause
@@ -129,14 +146,17 @@ export default function LandingPage() {
     if (isPlaying && !audio.paused) {
       audio.pause();
     } else {
-      if (audio.src !== streamUrl) {
+      if (currentTrackIdRef.current !== activePiece._id || !audio.src) {
         audio.src = streamUrl;
+        currentTrackIdRef.current = activePiece._id;
         audio.load();
       }
       try {
         await audio.play();
       } catch (err) {
-        console.warn('Audio play request interrupted:', err);
+        if (err.name !== 'AbortError') {
+          console.warn('Playback error:', err);
+        }
       }
     }
   };
@@ -165,12 +185,16 @@ export default function LandingPage() {
   const handleSelectTrack = (idx) => {
     setCurrentTrackIndex(idx);
     const selected = cloudTracks[idx];
-    if (audioRef.current && selected) {
+    const audio = audioRef.current;
+    if (audio && selected) {
       const url = getAudioUrl(selected);
       if (url) {
-        audioRef.current.src = url;
-        audioRef.current.load();
-        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        audio.src = url;
+        currentTrackIdRef.current = selected._id;
+        audio.load();
+        audio.play().then(() => setIsPlaying(true)).catch((err) => {
+          if (err.name !== 'AbortError') console.warn('Track switch playback error:', err);
+        });
       }
     }
   };

@@ -41,26 +41,35 @@ export default function Dashboard() {
       .catch((requestError) => active && setError(requestError.message))
       .finally(() => active && setLoading(false));
 
-    const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
-      path: '/socket.io',
-      auth: { token: getAccessToken() },
-    });
+    const socketUrl = import.meta.env.VITE_SOCKET_URL;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const targetUrl = socketUrl || (isLocal ? window.location.origin : null);
 
-    socket.on('track:created', ({ track }) => {
-      setTracks((items) => [track, ...items.filter((item) => item._id !== track._id)]);
-    });
+    let socket = null;
+    if (targetUrl) {
+      socket = io(targetUrl, {
+        path: '/socket.io',
+        auth: { token: getAccessToken() },
+        reconnectionAttempts: 2,
+        timeout: 3000
+      });
 
-    socket.on('track:updated', ({ track }) => {
-      setTracks((items) => items.map((item) => (item._id === track._id ? track : item)));
-    });
+      socket.on('track:created', ({ track }) => {
+        setTracks((items) => [track, ...items.filter((item) => item._id !== track._id)]);
+      });
 
-    socket.on('track:deleted', ({ track }) => {
-      setTracks((items) => items.filter((item) => item._id !== (track?._id || track)));
-    });
+      socket.on('track:updated', ({ track }) => {
+        setTracks((items) => items.map((item) => (item._id === track._id ? track : item)));
+      });
+
+      socket.on('track:deleted', ({ track }) => {
+        setTracks((items) => items.filter((item) => item._id !== (track?._id || track)));
+      });
+    }
 
     return () => {
       active = false;
-      socket.disconnect();
+      if (socket) socket.disconnect();
     };
   }, []);
 

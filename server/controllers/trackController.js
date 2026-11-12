@@ -19,7 +19,8 @@ function emitTrackEvent(req, action, track) {
 
 exports.getAllTracks = async (req, res, next) => {
   try {
-    const tracks = await Track.find().sort({ createdAt: -1 }).lean();
+    // Sort by smallest file size first so lightweight tracks (Sunflower, Believer) load instantaneously
+    const tracks = await Track.find().sort({ 'audioFile.size': 1, createdAt: -1 }).lean();
     res.status(200).json(tracks);
   } catch (error) { next(error); }
 };
@@ -118,30 +119,23 @@ exports.streamAudio = async (req, res, next) => {
 
     const range = req.headers.range;
 
-    // 1. Check if track is stored in MongoDB Atlas GridFS
+    // 1. Direct streaming from MongoDB Atlas GridFS
     const db = mongoose.connection.db;
-    if (db) {
-      const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'audio_library' });
-      let gridFile = null;
-      if (track.gridFsId) {
-        gridFile = await bucket.find({ _id: track.gridFsId }).next();
-      }
-      if (!gridFile && track.audioFile?.filename) {
-        gridFile = await bucket.find({ filename: track.audioFile.filename }).next();
-      }
+    if (db && track.gridFsId) {
+      const fileSize = track.audioFile?.size || 0;
+      const contentType = track.audioFile?.mimeType || 'audio/mpeg';
 
-      if (gridFile) {
-        const fileSize = gridFile.length;
-        const contentType = gridFile.contentType || track.audioFile?.mimeType || 'audio/mpeg';
+      if (fileSize > 0) {
+        const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'audio_library' });
 
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
         if (!range) {
           res.setHeader('Content-Length', fileSize);
           if (req.method === 'HEAD') return res.status(200).end();
-          return bucket.openDownloadStream(gridFile._id).on('error', next).pipe(res);
+          return bucket.openDownloadStream(track.gridFsId).on('error', next).pipe(res);
         }
 
         const match = /^bytes=(\d*)-(\d*)$/.exec(range);
@@ -171,7 +165,7 @@ exports.streamAudio = async (req, res, next) => {
         res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
         res.setHeader('Content-Length', end - start + 1);
         if (req.method === 'HEAD') return res.end();
-        return bucket.openDownloadStream(gridFile._id, { start, end: end + 1 }).on('error', next).pipe(res);
+        return bucket.openDownloadStream(track.gridFsId, { start, end: end + 1 }).on('error', next).pipe(res);
       }
     }
 

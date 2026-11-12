@@ -57,14 +57,26 @@ export function PlayerProvider({ children }) {
       setCurrentTrack(track);
       setPosition(0);
     }
-    try { await audio.play(); } catch { setError('Playback was blocked. Tap play again to allow audio.'); }
+    try {
+      await audio.play();
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError('Playback was blocked. Tap play again to allow audio.');
+      }
+    }
   }, [currentTrack]);
 
   const togglePlay = useCallback(async () => {
     if (!currentTrack) return;
     const audio = audioRef.current;
     if (audio.paused) {
-      try { await audio.play(); } catch { setError('Playback was blocked by the browser.'); }
+      try {
+        await audio.play();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError('Playback was blocked by the browser.');
+        }
+      }
     } else audio.pause();
   }, [currentTrack]);
 

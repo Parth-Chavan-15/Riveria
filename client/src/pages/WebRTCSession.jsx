@@ -116,7 +116,9 @@ export default function WebRTCSession() {
   useEffect(() => {
     const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
       path: '/socket.io',
-      auth: { token: getAccessToken() }
+      auth: { token: getAccessToken() },
+      reconnectionAttempts: 3,
+      timeout: 4000
     });
     socketRef.current = socket;
 

@@ -68,7 +68,7 @@ function AppContent() {
       <div className="fixed bottom-[-20%] right-[-10%] w-[60vw] h-[60vh] bg-[radial-gradient(circle,rgba(137,206,255,0.03)_0%,transparent_70%)] rounded-full blur-[100px] -z-10 pointer-events-none"></div>
 
       {token ? (
-        <div className="flex flex-1 overflow-hidden w-full relative z-10 min-h-screen">
+        <div className="flex w-full relative z-10 h-screen overflow-hidden">
           <Sidebar mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
           <TopBar onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)} />
           <Routes>

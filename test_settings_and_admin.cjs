@@ -19,6 +19,15 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   console.log('\n--- SCENARIO 1: Listener Account Authentication & Tabs Verification ---');
   const listenerContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const listenerPage = await listenerContext.newPage();
+  listenerPage.on('console', msg => console.log('LISTENER CONSOLE:', msg.text()));
+  listenerPage.on('response', async res => {
+    if (res.url().includes('/api/')) {
+      console.log('API RESP:', res.status(), res.url());
+      if (res.status() >= 400) {
+        try { console.log('RESP BODY:', await res.text()); } catch {}
+      }
+    }
+  });
 
   // Login as listener
   await listenerPage.goto(`${TARGET_URL}/auth`, { waitUntil: 'networkidle' });
@@ -36,12 +45,22 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   console.log('Listener Sidebar contains "System Architect"?', listenerNavText.includes('System Architect'));
   console.log('Listener Sidebar contains "Engine Console"?', listenerNavText.includes('Engine Console'));
   console.log('Listener Sidebar contains "Discovery"?', listenerNavText.includes('Discovery'));
-  console.log('Listener Sidebar contains "Engine Settings"?', listenerNavText.includes('Engine Settings'));
+  console.log('Listener Sidebar contains "Settings"?', listenerNavText.includes('Settings'));
 
-  if (!listenerNavText.includes('System Architect') && !listenerNavText.includes('Engine Console') && listenerNavText.includes('Discovery')) {
+  if (!listenerNavText.includes('System Architect') && !listenerNavText.includes('Engine Console') && listenerNavText.includes('Discovery') && listenerNavText.includes('Settings')) {
     console.log('✅ PASS: Listener sidebar is clean; zero admin tabs exposed to standard listeners.');
   } else {
     console.error('❌ FAIL: Admin tabs leaked to listener sidebar!');
+    process.exit(1);
+  }
+
+  // Verify Discovery page does NOT have the top DSP banner above tracks
+  const dspBannerCount = await listenerPage.locator('text=32-Bit Floating DSP Stage Active').count();
+  console.log('Discovery top DSP banner count (should be 0):', dspBannerCount);
+  if (dspBannerCount === 0) {
+    console.log('✅ PASS: Top DSP banner removed from Discovery track view!');
+  } else {
+    console.error('❌ FAIL: Top DSP banner still present on Discovery page!');
     process.exit(1);
   }
 
@@ -85,6 +104,24 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
     process.exit(1);
   }
 
+  // Test Dynamic Fader Nudge and Direct Modulation
+  console.log('Testing Dynamic Fader: Clicking increment (+) on 60 Hz Sub-Bass...');
+  const plusBtn = listenerPage.locator('button[aria-label="Increment 60 Hz"]');
+  await plusBtn.click();
+  await listenerPage.waitForTimeout(300);
+
+  const updatedBand = await listenerPage.evaluate(() => {
+    const bands = JSON.parse(localStorage.getItem('reveria:eqBands') || '[]');
+    return { firstBand: bands[0], customPreset: localStorage.getItem('reveria:eqPreset') };
+  });
+  console.log('Band state after dynamic increment:', updatedBand);
+  if (updatedBand.firstBand === 7 && updatedBand.customPreset === 'custom') {
+    console.log('✅ PASS: Dynamic fader increment altered band to +7dB and switched to custom profile in real-time!');
+  } else {
+    console.error('❌ FAIL: Dynamic fader interaction failed!', updatedBand);
+    process.exit(1);
+  }
+
   // Test 2: Acoustic Calibration & 440Hz Test Tone
   console.log('Testing Acoustic Calibration & Hardware Latency Tester...');
   const testToneBtn = listenerPage.locator('button:has-text("Test Acoustic Tone")');
@@ -110,11 +147,11 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   console.log('Testing Save Preferences...');
   const saveBtn = listenerPage.locator('button:has-text("Save Preferences")');
   await saveBtn.click();
-  await listenerPage.waitForTimeout(500);
-  const saveFeedback = await listenerPage.locator('text=Audiophile engine preferences and DSP parameters saved').count();
+  await listenerPage.waitForTimeout(1000);
+  const saveFeedback = await listenerPage.locator('text=Preferences synchronized and saved').count();
   console.log('Save feedback displayed:', saveFeedback > 0);
   if (saveFeedback > 0) {
-    console.log('✅ PASS: Settings successfully persisted with visual confirmation!');
+    console.log('✅ PASS: Settings successfully persisted and saved to account with visual confirmation!');
   } else {
     console.error('❌ FAIL: Save feedback was not displayed!');
     process.exit(1);

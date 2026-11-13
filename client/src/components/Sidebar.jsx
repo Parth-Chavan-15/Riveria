@@ -7,24 +7,16 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  const adminLinks = [
-    { to: '/admin', label: 'Engine Console', icon: 'terminal', badge: 'LIVE' },
-    { to: '/admin/catalog', label: 'Catalog Master', icon: 'library_music' },
-    { to: '/admin/users', label: 'User Governance', icon: 'admin_panel_settings' },
-  ];
-
-  const adminStudioLinks = [
-    { to: '/', label: 'Discovery', icon: 'explore' },
-    { to: '/sync', label: 'Master Ingest & Staging', icon: 'cloud_upload' },
-    { to: '/session', label: 'WebRTC Jam Director', icon: 'settings_input_antenna' },
-    { to: '/settings', label: 'Mastering DSP & EQ', icon: 'tune' },
-  ];
-
-  const listenerLinks = [
+  const mainLinks = [
     { to: '/', label: 'Discovery', icon: 'explore' },
     { to: '/sync', label: 'Local Sync Hub', icon: 'sync_desktop' },
     { to: '/session', label: 'WebRTC Session', icon: 'settings_input_antenna' },
-    { to: '/settings', label: 'Engine Settings', icon: 'tune' },
+  ];
+
+  const adminLinks = [
+    { to: '/admin/catalog', label: 'Catalog Master', icon: 'library_music' },
+    { to: '/admin', label: 'Engine Console', icon: 'terminal', badge: 'LIVE' },
+    { to: '/admin/users', label: 'User Governance', icon: 'admin_panel_settings' },
   ];
 
   const renderNavContent = () => (
@@ -52,8 +44,40 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
         </button>
       </div>
 
-      <div className="flex flex-col gap-5 flex-grow overflow-y-auto pr-1">
-        {/* Admin Navigation Section (Visible ONLY to Admin accounts) */}
+      <div className="flex flex-col gap-6 flex-grow overflow-y-auto pr-1">
+        {/* Core Listener Suite */}
+        <div>
+          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-500 px-3 mb-2">
+            Listener Suite
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {mainLinks.map((link) => {
+              const isActive = path === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 py-2.5 rounded-xl px-3.5 transition-all duration-200 ${
+                    isActive
+                      ? 'text-white font-bold border-l-4 border-primary bg-white/10 shadow-[0_0_15px_rgba(208,188,255,0.15)]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <span
+                    className="material-symbols-outlined text-lg"
+                    style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
+                  >
+                    {link.icon}
+                  </span>
+                  <span className="text-xs font-semibold">{link.label}</span>
+                </Link>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* System Architect Section (Visible exclusively to Admin accounts) */}
         {isAdmin && (
           <div>
             <div className="flex items-center gap-1.5 px-3 mb-2">
@@ -96,38 +120,27 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             </ul>
           </div>
         )}
+      </div>
 
-        {/* Secondary Navigation Section */}
-        <div>
-          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-500 px-3 mb-2">
-            {isAdmin ? 'Studio & Broadcast' : 'Listener Suite'}
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {(isAdmin ? adminStudioLinks : listenerLinks).map((link) => {
-              const isActive = path === link.to;
-              return (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={onClose}
-                  className={`flex items-center gap-3 py-2.5 rounded-xl px-3.5 transition-all duration-200 ${
-                    isActive
-                      ? 'text-white font-bold border-l-4 border-primary bg-white/10 shadow-[0_0_15px_rgba(208,188,255,0.15)]'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <span
-                    className="material-symbols-outlined text-lg"
-                    style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
-                  >
-                    {link.icon}
-                  </span>
-                  <span className="text-xs font-semibold">{link.label}</span>
-                </Link>
-              );
-            })}
-          </ul>
-        </div>
+      {/* Settings anchored at the bottom */}
+      <div className="mt-auto pt-3 border-t border-white/5">
+        <Link
+          to="/settings"
+          onClick={onClose}
+          className={`flex items-center gap-3 py-2.5 rounded-xl px-3.5 transition-all duration-200 ${
+            path === '/settings'
+              ? 'text-white font-bold border-l-4 border-primary bg-white/10 shadow-[0_0_15px_rgba(208,188,255,0.15)]'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          }`}
+        >
+          <span
+            className="material-symbols-outlined text-lg"
+            style={{ fontVariationSettings: path === '/settings' ? "'FILL' 1" : "'FILL' 0" }}
+          >
+            tune
+          </span>
+          <span className="text-xs font-semibold">Settings</span>
+        </Link>
       </div>
     </>
   );

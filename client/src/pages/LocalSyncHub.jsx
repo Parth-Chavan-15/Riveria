@@ -94,8 +94,9 @@ export default function LocalSyncHub() {
   };
 
   return (
-    <main className="flex-1 md:ml-80 p-5 pb-36 pt-24 md:p-10 md:pt-28 text-white max-w-5xl">
-      {/* Admin Staging Suite Banner */}
+    <main className="flex-1 h-full overflow-y-auto p-5 pb-36 pt-24 md:ml-80 md:p-10 md:pt-28 text-white scroll-smooth">
+      <div className="max-w-5xl">
+        {/* Admin Staging Suite Banner */}
       {isAdmin && (
         <div className="mb-6 p-4 rounded-2xl bg-[#140c1d] border border-rose-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(244,63,94,0.1)]">
           <div className="flex items-center gap-3">
@@ -305,6 +306,7 @@ export default function LocalSyncHub() {
           )}
         </div>
       </section>
+      </div>
     </main>
   );
 }

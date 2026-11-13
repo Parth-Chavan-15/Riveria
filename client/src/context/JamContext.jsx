@@ -235,7 +235,9 @@ export function JamProvider({ children }) {
     }
   }, [joinedRoom, addLog]);
 
-  // Stream local audio file bytes across WebRTC DataChannel directly to connected peers
+  const p2pLatencyRef = useRef(new Map());
+
+  // Stream local audio file bytes across WebRTC DataChannel directly to connected peers with flow control
   const streamLocalTrackToPeers = useCallback(async (track) => {
     if (!track?.rawFile) return;
     try {
@@ -243,38 +245,52 @@ export function JamProvider({ children }) {
       const buffer = await track.rawFile.arrayBuffer();
       const metaPacket = {
         type: 'START_AUDIO_TRANSFER',
-        trackId: track._id,
+        trackId: track._id || track.id,
         title: track.title,
         artist: track.artist,
         mimeType: track.rawFile.type || 'audio/mpeg',
-        totalBytes: buffer.byteLength
+        totalBytes: buffer.byteLength,
+        startWallTime: Date.now(),
+        currentPos: playerRef.current?.getAudioCurrentTime ? playerRef.current.getAudioCurrentTime() : (playerRef.current?.position || 0)
       };
 
       peersRef.current.forEach(({ channel }) => {
         if (channel?.readyState === 'open') {
-          channel.send(JSON.stringify(metaPacket));
+          try { channel.send(JSON.stringify(metaPacket)); } catch {}
         }
       });
 
-      const CHUNK_SIZE = 16384;
+      const CHUNK_SIZE = 32768; // 32KB high-speed chunks
       for (let offset = 0; offset < buffer.byteLength; offset += CHUNK_SIZE) {
         const slice = buffer.slice(offset, offset + CHUNK_SIZE);
-        peersRef.current.forEach(({ channel }) => {
+        for (const { channel } of peersRef.current.values()) {
           if (channel?.readyState === 'open') {
-            channel.send(slice);
+            // Flow control: wait if channel send buffer is backlogged (> 128KB)
+            while (channel.bufferedAmount > 131072) {
+              await new Promise((r) => setTimeout(r, 10));
+            }
+            try { channel.send(slice); } catch {}
           }
-        });
-        if (offset % (CHUNK_SIZE * 16) === 0) {
-          await new Promise((r) => setTimeout(r, 4));
+        }
+        if (offset % (CHUNK_SIZE * 8) === 0) {
+          await new Promise((r) => setTimeout(r, 2));
         }
       }
 
       peersRef.current.forEach(({ channel }) => {
         if (channel?.readyState === 'open') {
-          channel.send(JSON.stringify({ type: 'END_AUDIO_TRANSFER', trackId: track._id }));
+          try {
+            channel.send(JSON.stringify({
+              type: 'END_AUDIO_TRANSFER',
+              trackId: track._id || track.id,
+              totalBytes: buffer.byteLength,
+              startWallTime: metaPacket.startWallTime,
+              currentPos: metaPacket.currentPos
+            }));
+          } catch {}
         }
       });
-      addLog('P2P_FILE', `P2P audio stream for "${track.title}" received by peer device(s).`);
+      addLog('P2P_FILE', `P2P audio stream for "${track.title}" successfully transferred to peers.`);
     } catch {
       addLog('ERR', `P2P audio stream failed for "${track.title}".`);
     }
@@ -297,8 +313,11 @@ export function JamProvider({ children }) {
 
         // Send our current collaborative playlist to new peer
         if (collabPlaylistRef.current.length > 0) {
-          channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylistRef.current }));
+          try { channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylistRef.current })); } catch {}
         }
+
+        // Send immediate P2P ping to establish sub-5ms latency baseline
+        try { channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() })); } catch {}
       };
 
       channel.onmessage = (event) => {
@@ -320,7 +339,9 @@ export function JamProvider({ children }) {
           } else if (packet.type === 'PLAYBACK_HEARTBEAT') {
             const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
             if (packet.trackId === currentTrackId && playerRef.current?.isPlaying && typeof packet.position === 'number') {
-              playerRef.current?.correctDrift?.(packet.position);
+              const p2pRtt = p2pLatencyRef.current.get(peerId) || 10;
+              const adjustedPos = packet.position + (p2pRtt / 2000); // adjust for transit delay
+              playerRef.current?.correctDrift?.(adjustedPos);
             }
           } else if (packet.type === 'START_AUDIO_TRANSFER') {
             activeIncomingTransferRef.current = {
@@ -330,9 +351,11 @@ export function JamProvider({ children }) {
               mimeType: packet.mimeType || 'audio/mpeg',
               chunks: [],
               receivedBytes: 0,
-              totalBytes: packet.totalBytes
+              totalBytes: packet.totalBytes,
+              startWallTime: packet.startWallTime || Date.now(),
+              currentPos: packet.currentPos || 0
             };
-            addLog('P2P_FILE', `Receiving private audio stream for "${packet.title}" from peer...`);
+            addLog('P2P_FILE', `Receiving private audio stream for "${packet.title}" (${Math.round((packet.totalBytes || 0) / 1024)} KB) from peer...`);
           } else if (packet.type === 'END_AUDIO_TRANSFER') {
             const transfer = activeIncomingTransferRef.current;
             if (transfer && transfer.trackId === packet.trackId) {
@@ -340,21 +363,44 @@ export function JamProvider({ children }) {
               const localUrl = URL.createObjectURL(blob);
               const p2pTrack = {
                 _id: transfer.trackId,
+                id: transfer.trackId,
                 title: transfer.title,
                 artist: transfer.artist || 'Peer Device',
                 type: 'Local',
                 localUrl,
+                rawBlob: blob,
+                duration: 'Local',
                 imageColor: 'bg-gradient-to-br from-cyan-700 via-blue-800 to-slate-950'
               };
-              addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Playing in real time.`);
-              playerRef.current?.playTrack?.(p2pTrack);
+              playerRef.current?.addP2PTrack?.(p2pTrack);
+
+              // Calculate elapsed playhead delta so remote peer joins in exact phase lock
+              const transferElapsed = Math.max(0, (Date.now() - (transfer.startWallTime || Date.now())) / 1000);
+              const targetPos = Math.max(0, (transfer.currentPos || 0) + transferElapsed);
+
+              addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Locking live playback at ${targetPos.toFixed(1)}s.`);
+              playerRef.current?.playTrack?.(p2pTrack, collabPlaylistRef.current, true, true /* fromSync = true! Prevents feedback echo loop! */);
+              if (targetPos > 0) {
+                setTimeout(() => {
+                  playerRef.current?.seek?.(targetPos);
+                }, 100);
+              }
               activeIncomingTransferRef.current = null;
             }
           } else if (packet.type === 'REQUEST_PLAY_TRACK') {
-            const match = playerRef.current?.localTracks?.find((t) => t._id === packet.trackId);
+            const match = playerRef.current?.localTracks?.find((t) => (t._id || t.id) === packet.trackId);
             if (match) {
+              addLog('P2P_FILE', `Peer requested playback of local track "${match.title}". Starting room broadcast...`);
+              playerRef.current?.playTrack?.(match, collabPlaylistRef.current, true, false);
               streamLocalTrackToPeers(match);
             }
+          } else if (packet.type === 'P2P_PING') {
+            if (channel?.readyState === 'open') {
+              try { channel.send(JSON.stringify({ type: 'P2P_PONG', t1: packet.t1, t2: Date.now() })); } catch {}
+            }
+          } else if (packet.type === 'P2P_PONG') {
+            const p2pRtt = Math.max(1, Date.now() - packet.t1);
+            p2pLatencyRef.current.set(peerId, p2pRtt);
           }
         } catch {}
       };
@@ -540,13 +586,13 @@ export function JamProvider({ children }) {
         const data = await apiRequest(`/session/poll?roomId=${curRoom}&peerId=${myPeerIdRef.current}`);
         if (!data?.ok) return;
 
-        // Accurate Cristian's clock skew calibration against central server
+        // Accurate Cristian's clock skew calibration against central server with minimum-RTT weighting
         if (typeof data.serverTime === 'number') {
           const reqEnd = Date.now();
-          const rtt = Math.max(0, reqEnd - reqStart);
+          const rtt = Math.max(1, reqEnd - reqStart);
           const estServerNow = data.serverTime + (rtt / 2);
           const skew = estServerNow - reqEnd;
-          playerRef.current?.calibrateClock?.(skew);
+          playerRef.current?.calibrateClock?.(skew, rtt);
         }
 
         // 1. Process any waiting signals
@@ -661,6 +707,38 @@ export function JamProvider({ children }) {
       stopHeartbeat();
     };
   }, [joinedRoom]);
+
+  // Periodic direct P2P ping across active DataChannels for sub-5ms latency measurement
+  useEffect(() => {
+    const pingPeers = () => {
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          try {
+            channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() }));
+          } catch {}
+        }
+      });
+    };
+    const stopPing = createWorkerTimer(pingPeers, 2500);
+    return () => stopPing();
+  }, [joinedRoom]);
+
+  // Handle requests for local P2P audio files
+  useEffect(() => {
+    const onTrackNeeded = (e) => {
+      const neededTrackId = e.detail?.trackId;
+      if (!neededTrackId) return;
+      peersRef.current.forEach(({ channel }) => {
+        if (channel?.readyState === 'open') {
+          try {
+            channel.send(JSON.stringify({ type: 'REQUEST_PLAY_TRACK', trackId: neededTrackId }));
+          } catch {}
+        }
+      });
+    };
+    window.addEventListener('reveria:p2p-track-needed', onTrackNeeded);
+    return () => window.removeEventListener('reveria:p2p-track-needed', onTrackNeeded);
+  }, []);
 
   // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab or changes network!
   useEffect(() => {

@@ -64,6 +64,7 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950',
     imageSrc: '/covers/sunflower.png',
+    audioSrc: '/audio/post-malone-sunflower.mp3',
     audioFile: { filename: 'post-malone-sunflower.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -74,6 +75,7 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
     imageSrc: '/covers/birds.jpg',
+    audioSrc: '/audio/imagine-dragons-birds.mp3',
     audioFile: { filename: 'imagine-dragons-birds.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -84,6 +86,7 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-purple-600 via-indigo-700 to-zinc-950',
     imageSrc: '/covers/thunder.jpg',
+    audioSrc: '/audio/imagine-dragons-thunder.mp3',
     audioFile: { filename: 'imagine-dragons-thunder.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -94,6 +97,7 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
     imageSrc: '/covers/believer.jpg',
+    audioSrc: '/audio/imagine-dragons-believer.mp3',
     audioFile: { filename: 'imagine-dragons-believer.mp3', mimeType: 'audio/mpeg' },
   },
   {
@@ -104,6 +108,7 @@ const STATIC_MOVEMENT_TRACKS = [
     type: 'Cloud',
     imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-zinc-950',
     imageSrc: '/covers/happier.jpg',
+    audioSrc: '/audio/marshmello-happier.mp3',
     audioFile: { filename: 'marshmello-happier.mp3', mimeType: 'audio/mpeg' },
   },
 ];
@@ -225,7 +230,7 @@ export default function LandingPage() {
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
   const [totalDurationFormatted, setTotalDurationFormatted] = useState('02:38');
   const [activeSection, setActiveSection] = useState(0);
-  const [followScroll, setFollowScroll] = useState(true);
+  const [followScroll, setFollowScroll] = useState(false);
   const [showFloatingDock, setShowFloatingDock] = useState(false);
 
   // Multi-threaded Audio Pool & References
@@ -314,36 +319,59 @@ export default function LandingPage() {
 
   const getAudioUrl = useCallback((track) => {
     if (!track) return '';
+    if (track.audioSrc && track.audioSrc.startsWith('/audio/')) return track.audioSrc;
+    if (track.audioFile?.filename) return `/audio/${track.audioFile.filename}`;
     if (track._id && track._id.length === 24) return apiUrl(`/tracks/${track._id}/stream`);
-    if (track.audioFile?.filename) return apiUrl(`/tracks/${track._id}/stream`);
-    if (track.audioSrc && !track.audioSrc.startsWith('/audio/')) return track.audioSrc;
-    return '';
+    return track.audioSrc || '';
   }, []);
 
   // 1. Instant Audio Priming on Mount + Staggered Background Preloading
   useEffect(() => {
-    // A. Priority 1: Immediately prime Track 0 (Sunflower) on line 1 for instant 0ms start
+    const attachWatchdog = (audioElem, track) => {
+      let stallTimer = null;
+      audioElem.addEventListener('waiting', () => {
+        if (!audioElem.paused) {
+          if (stallTimer) clearTimeout(stallTimer);
+          stallTimer = setTimeout(() => {
+            if (!audioElem.paused) {
+              const curPos = audioElem.currentTime || 0;
+              audioElem.src = getAudioUrl(track);
+              audioElem.load();
+              audioElem.currentTime = curPos;
+              audioElem.play().catch(() => {});
+            }
+          }, 1500);
+        }
+      });
+      audioElem.addEventListener('playing', () => {
+        if (stallTimer) clearTimeout(stallTimer);
+      });
+    };
+
+    // A. Priority 1: Immediately prime Track 0 (Sunflower) via high-speed edge CDN
     const heroTrack = STATIC_MOVEMENT_TRACKS[0];
-    const heroStreamUrl = apiUrl(`/tracks/${heroTrack._id}/stream`);
+    const heroStreamUrl = getAudioUrl(heroTrack);
     if (!audioPoolRef.current.has(heroTrack._id)) {
       const heroAudio = new Audio();
       heroAudio.preload = 'auto';
       heroAudio.src = heroStreamUrl;
       heroAudio.volume = volume / 100;
       heroAudio.load();
+      attachWatchdog(heroAudio, heroTrack);
       audioPoolRef.current.set(heroTrack._id, heroAudio);
       activeAudioRef.current = heroAudio;
       audioCoordinator.register(heroAudio);
     }
 
-    // B. Setup background tracks without aggressive preloading so Track 0 receives 100% network bandwidth
+    // B. Setup background movement tracks with instant metadata preloading
     STATIC_MOVEMENT_TRACKS.slice(1).forEach((track) => {
-      const streamUrl = apiUrl(`/tracks/${track._id}/stream`);
+      const streamUrl = getAudioUrl(track);
       if (!audioPoolRef.current.has(track._id)) {
         const audioElem = new Audio();
-        audioElem.preload = 'none';
+        audioElem.preload = 'metadata';
         audioElem.src = streamUrl;
         audioElem.volume = volume / 100;
+        attachWatchdog(audioElem, track);
         audioPoolRef.current.set(track._id, audioElem);
         audioCoordinator.register(audioElem);
       }
@@ -630,13 +658,13 @@ export default function LandingPage() {
               clearTimeout(scrollDebounceTimerRef.current);
             }
 
-            // Settle fast scroll velocity so intermediate fling sections don't cause audio thrashing
+            // Settle scroll velocity so reading and fast flicking don't thrash or cut off audio
             scrollDebounceTimerRef.current = setTimeout(() => {
               const finalTarget = targetSectionIdxRef.current;
-              if (finalTarget !== currentTrackIndexRef.current) {
-                playTrackDirect(finalTarget, isPlayingRef.current, true);
+              if (finalTarget !== currentTrackIndexRef.current && isPlayingRef.current) {
+                playTrackDirect(finalTarget, true, true);
               }
-            }, 75);
+            }, 1200);
           }
         }
       }

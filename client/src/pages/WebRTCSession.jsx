@@ -230,20 +230,45 @@ export default function WebRTCSession() {
                 </button>
               </div>
 
-              {/* Local Mounted Tracks Tab */}
-              {player.localTracks.length > 0 && (
-                <div>
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-2 flex items-center gap-1.5">
+              {/* Local Mounted Tracks Tab & Direct Device Audio Picker */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">lock</span>
-                    Your Private Local Device Tracks (P2P Encrypted, 0 Server Logs)
+                    Private Local Device Tracks (P2P Encrypted, 0 Server Logs)
                   </h5>
+                  <label
+                    htmlFor="jam-local-file-picker"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs font-semibold cursor-pointer transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-xs">upload_file</span>
+                    <span>Browse Device</span>
+                  </label>
+                  <input
+                    id="jam-local-file-picker"
+                    type="file"
+                    multiple
+                    accept="audio/*,.mp3,.wav,.ogg,.aac,.flac,.m4a"
+                    className="hidden"
+                    onChange={async (e) => {
+                      if (e.target.files?.length) {
+                        await player.mountLocalFiles(e.target.files);
+                      }
+                    }}
+                  />
+                </div>
+
+                {player.localTracks.length > 0 ? (
                   <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                     {player.localTracks.map((t) => (
                       <div
                         key={t._id}
                         className="p-2.5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10"
                       >
-                        <span className="text-xs font-medium text-white truncate max-w-[240px]">{t.title}</span>
+                        <div className="truncate max-w-[240px]">
+                          <p className="text-xs font-medium text-white truncate">{t.title}</p>
+                          <p className="text-[10px] text-cyan-300/70 truncate">{t.artist || 'Local Device Audio'}</p>
+                        </div>
                         <button
                           onClick={() => handleAddLocalTrack(t)}
                           className="px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs font-semibold"
@@ -253,8 +278,19 @@ export default function WebRTCSession() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="p-3.5 rounded-xl border border-dashed border-cyan-500/30 bg-cyan-500/5 text-center">
+                    <p className="text-xs text-slate-300">No local tracks mounted on this device yet.</p>
+                    <label
+                      htmlFor="jam-local-file-picker"
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs font-semibold cursor-pointer transition-all active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-sm">add_circle</span>
+                      <span>Pick Audio File from Device</span>
+                    </label>
+                  </div>
+                )}
+              </div>
 
               {/* Cloud Tracks */}
               <div>

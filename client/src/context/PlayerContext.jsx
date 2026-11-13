@@ -7,9 +7,13 @@ import { extractAudioMetadata } from '../utils/audioMetadata';
 function sourceFor(track) {
   if (!track) return '';
   if (track.localUrl) return track.localUrl;
-  if (track.audioSrc) return track.audioSrc;
   const tid = track._id || track.id;
-  if (tid && track.type !== 'Local') return apiUrl(`/tracks/${tid}/stream`);
+  const isLocal = track.type === 'Local' || (tid && String(tid).startsWith('local-'));
+  if (isLocal) {
+    // For local private audio, only in-memory blob URLs are valid; never request from server!
+    return track.localUrl || '';
+  }
+  if (track.audioSrc) return track.audioSrc;
   if (track.audioFile?.filename && tid) return apiUrl(`/tracks/${tid}/stream`);
   if (tid) return apiUrl(`/tracks/${tid}/stream`);
   return '';
@@ -59,35 +63,57 @@ export function PlayerProvider({ children }) {
   const trackLoadingRef = useRef(null);
   const seekDebounceTimerRef = useRef(null);
 
-  const calibrateClock = useCallback((skew) => {
+  // Minimum-RTT Weighted Precision Cristian/NTP Clock Skew Estimator
+  const calibrateClock = useCallback((skew, rtt = 50) => {
     if (typeof skew !== 'number' || !Number.isFinite(skew)) return;
-    clockSamplesRef.current.push(skew);
-    if (clockSamplesRef.current.length > 10) {
+    const safeRtt = Math.max(1, Number(rtt) || 50);
+    clockSamplesRef.current.push({ skew, rtt: safeRtt, time: Date.now() });
+    if (clockSamplesRef.current.length > 20) {
       clockSamplesRef.current.shift();
     }
-    const sorted = [...clockSamplesRef.current].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    clockSkewRef.current = clockSkewRef.current === 0
-      ? median
-      : clockSkewRef.current * 0.7 + median * 0.3;
+
+    // Sort samples by round-trip time and isolate best 60% with least queue delay
+    const sortedByRtt = [...clockSamplesRef.current].sort((a, b) => a.rtt - b.rtt);
+    const bestSamples = sortedByRtt.slice(0, Math.max(1, Math.ceil(sortedByRtt.length * 0.6)));
+
+    // RTT-squared inverse weighting (samples with lowest RTT receive exponentially higher trust)
+    let totalWeight = 0;
+    let weightedSkewSum = 0;
+    bestSamples.forEach((sample) => {
+      const weight = 1 / Math.pow(sample.rtt + 2, 2);
+      totalWeight += weight;
+      weightedSkewSum += sample.skew * weight;
+    });
+
+    const targetSkew = totalWeight > 0 ? weightedSkewSum / totalWeight : skew;
+
+    // Smooth exponential filtering
+    if (clockSkewRef.current === 0) {
+      clockSkewRef.current = targetSkew;
+    } else {
+      clockSkewRef.current = clockSkewRef.current * 0.75 + targetSkew * 0.25;
+    }
   }, []);
 
+  // Continuous Dynamic Phase-Locked Loop (PLL) Engine
   const correctDrift = useCallback((remotePos) => {
     const audio = audioRef.current;
     if (!audio || audio.paused || !isPlayingRef.current) return;
     if (typeof remotePos !== 'number' || !Number.isFinite(remotePos)) return;
 
     const drift = remotePos - audio.currentTime;
-    // Deadband <= 25ms: imperceptible Haas precedence effect, audio stays 1.0x
-    if (Math.abs(drift) <= 0.025) {
+    const absDrift = Math.abs(drift);
+
+    // Zone 1: Haas Precedence Deadband (<= 18ms): Bit-perfect native 1.0x playback
+    if (absDrift <= 0.018) {
       if (audio.playbackRate !== 1.0) {
         audio.playbackRate = 1.0;
       }
       return;
     }
 
-    // Hard snap if drift > 0.35s (350ms) e.g. after network stall, tab minimize, or seek
-    if (Math.abs(drift) > 0.35) {
+    // Zone 3: Hard Phase-Snap (> 250ms): Snap immediately on seeks or tab un-minimize
+    if (absDrift > 0.25) {
       audio.currentTime = remotePos;
       setPosition(remotePos);
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
@@ -95,16 +121,20 @@ export function PlayerProvider({ children }) {
       return;
     }
 
-    // Micro-rate adjustment (25ms - 350ms): phase-locks without pitch distortion
+    // Zone 2: Continuous Phase-Locked Loop (18ms - 250ms):
+    // Smooth proportional slew without audible pitch warble
     const now = Date.now();
-    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 400)) {
+    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 350)) {
       lastRateNudgeTimeRef.current = now;
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
-      const rateNudge = Math.max(-0.025, Math.min(0.025, drift * 0.1));
+
+      // Proportional gain Kp = 0.08, clamped to ±0.025 (2.5% rate adjustment)
+      const rateNudge = Math.max(-0.025, Math.min(0.025, drift * 0.08));
       audio.playbackRate = 1.0 + rateNudge;
+
       rateNudgeTimerRef.current = setTimeout(() => {
         if (audioRef.current) audioRef.current.playbackRate = 1.0;
-      }, 500);
+      }, 450);
     }
   }, []);
 
@@ -282,6 +312,13 @@ export function PlayerProvider({ children }) {
     if (!track) return;
     const source = sourceFor(track);
     if (!source) {
+      const isLocal = track.type === 'Local' || (track._id && String(track._id).startsWith('local-'));
+      if (isLocal) {
+        // Pending private P2P audio stream from peer: maintain state and await incoming chunks
+        setError('');
+        setCurrentTrack(track);
+        return;
+      }
       setError('This cloud track does not have a playable audio stream.');
       setCurrentTrack(track);
       return;
@@ -510,6 +547,19 @@ export function PlayerProvider({ children }) {
     return mounted.length;
   }, []);
 
+  const addP2PTrack = useCallback((track) => {
+    if (!track?._id || !track.localUrl) return;
+    setLocalTracks((prev) => {
+      const exists = prev.some((t) => t._id === track._id);
+      if (exists) {
+        return prev.map((t) => (t._id === track._id ? { ...t, ...track } : t));
+      }
+      const next = [track, ...prev];
+      localTracksRef.current = next;
+      return next;
+    });
+  }, []);
+
   const removeLocalTrack = useCallback((id) => {
     setLocalTracks((tracks) => {
       const track = tracks.find((item) => item._id === id);
@@ -549,18 +599,10 @@ export function PlayerProvider({ children }) {
 
     const clientNow = Date.now();
 
-    // 1. Clock Calibration (only against true server timestamps, never against peer timestamps)
+    // 1. Clock Calibration (against central server time with minimum-RTT weighting)
     if (currentServerTime && typeof currentServerTime === 'number') {
       const instantaneousSkew = currentServerTime - clientNow;
-      clockSamplesRef.current.push(instantaneousSkew);
-      if (clockSamplesRef.current.length > 10) {
-        clockSamplesRef.current.shift();
-      }
-      const sorted = [...clockSamplesRef.current].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      clockSkewRef.current = clockSkewRef.current === 0
-        ? median
-        : clockSkewRef.current * 0.7 + median * 0.3;
+      calibrateClock(instantaneousSkew, 60);
     }
 
     const roomKey = (roomId || 'default').toLowerCase();
@@ -568,6 +610,7 @@ export function PlayerProvider({ children }) {
     const lastRoomVersion = roomVersionsRef.current.get(roomKey) || 0;
 
     const targetId = trackId || (typeof directTrack === 'string' ? directTrack : (directTrack?._id || directTrack?.id));
+    const isLocalTrack = directTrack?.type === 'Local' || (targetId && String(targetId).startsWith('local-'));
     const allTracks = [...tracks, ...localTracksRef.current];
     const matchedTrack = allTracks.find((item) => (item._id || item.id) === targetId);
     let track = matchedTrack || (typeof directTrack === 'object' ? directTrack : null);
@@ -575,10 +618,10 @@ export function PlayerProvider({ children }) {
       track = {
         _id: targetId,
         id: targetId,
-        title: 'Jam Track',
-        artist: 'Riveria Haven',
-        type: 'Cloud',
-        audioSrc: `/tracks/${targetId}/stream`
+        title: directTrack?.title || (isLocalTrack ? 'Private P2P Audio' : 'Jam Track'),
+        artist: directTrack?.artist || (isLocalTrack ? 'Peer Device' : 'Riveria Haven'),
+        type: isLocalTrack ? 'Local' : 'Cloud',
+        audioSrc: isLocalTrack ? '' : `/tracks/${targetId}/stream`
       };
     }
     if (!track) return;
@@ -621,6 +664,15 @@ export function PlayerProvider({ children }) {
       if (incVersion > 0) roomVersionsRef.current.set(roomKey, incVersion);
       if (scheduledTimerRef.current) clearTimeout(scheduledTimerRef.current);
       lastTrackChangeTimeRef.current = Date.now();
+
+      // If local track and no localUrl in memory yet, hold state and notify JamContext to fetch P2P stream
+      if (track.type === 'Local' && !track.localUrl) {
+        currentTrackRef.current = track;
+        setCurrentTrack(track);
+        setIsPlaying(isTargetPlaying);
+        window.dispatchEvent(new CustomEvent('reveria:p2p-track-needed', { detail: { trackId: targetId } }));
+        return;
+      }
 
       await playTrack(track, allTracks, false /* do not autoplay yet; schedule synchronously */, true /* fromSync */);
 
@@ -803,6 +855,7 @@ export function PlayerProvider({ children }) {
     toggleMute,
     seek,
     mountLocalFiles,
+    addP2PTrack,
     removeLocalTrack,
     syncPlayback,
     resetRoomVersion,
@@ -835,6 +888,7 @@ export function PlayerProvider({ children }) {
     toggleMute,
     seek,
     mountLocalFiles,
+    addP2PTrack,
     removeLocalTrack,
     syncPlayback,
     resetRoomVersion,

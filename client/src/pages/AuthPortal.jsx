@@ -8,7 +8,7 @@ function AuthPortal() {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const { login, register, error, isLoading, clearError } = useAuth();
+    const { token, login, register, error, isLoading, clearError } = useAuth();
     const navigate = useNavigate();
 
     const redirectTarget = searchParams.get('redirect') || '/';
@@ -19,11 +19,17 @@ function AuthPortal() {
         audioCoordinator.stopAll('auth-portal-mounted');
     }, []);
 
+    useEffect(() => {
+        if (token) {
+            navigate(redirectTarget, { replace: true });
+        }
+    }, [token, redirectTarget, navigate]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const success = isLogin ? await login(email, password) : await register(email, password);
         if (success) {
-            navigate(redirectTarget);
+            navigate(redirectTarget, { replace: true });
         }
     };
 

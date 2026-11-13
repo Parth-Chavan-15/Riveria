@@ -56,6 +56,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/landing" element={<LandingPage />} />
+            <Route path="/auth" element={<AuthPortal />} />
             <Route path="/sync" element={<ProtectedRoute><LocalSyncHub /></ProtectedRoute>} />
             <Route path="/session" element={<ProtectedRoute><WebRTCSession /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

@@ -36,8 +36,11 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
     await page.goto(`${TARGET_URL}/auth`, { waitUntil: 'networkidle' });
     await page.fill('input[type="email"]', 'admin@riveria.com');
     await page.fill('input[type="password"]', 'RiveriaAdmin2026!');
-    await page.click('button:has-text("Authenticate")');
-    await page.waitForTimeout(2000);
+    await Promise.all([
+      page.waitForResponse(res => res.url().includes('/api/auth/login') && res.status() === 200),
+      page.click('button:has-text("Authenticate")')
+    ]);
+    await page.waitForTimeout(1000);
 
     // 2. Navigate to Catalog Master (/admin/catalog)
     console.log('Navigating to Catalog Master (/admin/catalog)...');
@@ -85,9 +88,10 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
     console.log('Submitting Master Track to GridFS...');
     await page.click('button:has-text("Upload & Deploy")');
 
-    // Wait for upload & GridFS ingestion to complete
-    await page.waitForSelector('text=successfully deployed to MongoDB GridFS', { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(1000);
+    // Wait for upload & GridFS ingestion to complete (allow up to 60s for multi-chunk cloud upload)
+    console.log('Waiting for GridFS cloud deployment confirmation...');
+    await page.waitForSelector('text=successfully deployed to MongoDB GridFS', { timeout: 60000 });
+    await page.waitForTimeout(1500);
 
     // 7. Verify track in catalog
     const noticeText = await page.evaluate(() => document.body.innerText);

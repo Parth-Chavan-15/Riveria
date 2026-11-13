@@ -169,7 +169,7 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
 
   // Test 5: Engine Console (/admin)
   console.log('\nTesting Engine Console (/admin)...');
-  await adminPage.goto(`${TARGET_URL}/admin`, { waitUntil: 'networkidle' });
+  await adminPage.goto(`${TARGET_URL}/admin`, { waitUntil: 'domcontentloaded' });
   await adminPage.waitForTimeout(2000);
   console.log('Current URL on /admin navigation:', adminPage.url());
   const bodySnippet = await adminPage.evaluate(() => document.body.innerText.slice(0, 300));
@@ -194,7 +194,7 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
 
   // Test 6: Catalog Master (/admin/catalog)
   console.log('\nTesting Catalog Master (/admin/catalog)...');
-  await adminPage.goto(`${TARGET_URL}/admin/catalog`, { waitUntil: 'networkidle' });
+  await adminPage.goto(`${TARGET_URL}/admin/catalog`, { waitUntil: 'domcontentloaded' });
   await adminPage.waitForTimeout(1500);
 
   const catalogStats = await adminPage.evaluate(() => {
@@ -214,7 +214,7 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
 
   // Test 7: User Governance (/admin/users)
   console.log('\nTesting User Governance (/admin/users)...');
-  await adminPage.goto(`${TARGET_URL}/admin/users`, { waitUntil: 'networkidle' });
+  await adminPage.goto(`${TARGET_URL}/admin/users`, { waitUntil: 'domcontentloaded' });
   await adminPage.waitForTimeout(1500);
 
   const userStats = await adminPage.evaluate(() => {

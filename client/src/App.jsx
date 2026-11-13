@@ -19,8 +19,11 @@ const ProtectedRoute = ({ children }) => {
   const { token } = useAuth();
   const location = useLocation();
   if (!token) {
+    const searchParams = new URLSearchParams(location.search);
+    const isInvite = searchParams.get('invite') === 'true' || searchParams.has('room');
     const returnUrl = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/auth?redirect=${returnUrl}`} replace />;
+    const inviteFlag = isInvite ? '&invite=true' : '';
+    return <Navigate to={`/auth?redirect=${returnUrl}${inviteFlag}`} replace />;
   }
   return children;
 };
@@ -28,8 +31,12 @@ const ProtectedRoute = ({ children }) => {
 // Route wrapper for guest invite landing on /session
 const SessionGuestRedirect = () => {
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const room = searchParams.get('room');
+  const isInvite = searchParams.get('invite') === 'true' || Boolean(room);
   const returnUrl = encodeURIComponent(location.pathname + location.search);
-  return <Navigate to={`/auth?redirect=${returnUrl}`} replace />;
+  const inviteFlag = isInvite ? '&invite=true' : '';
+  return <Navigate to={`/auth?redirect=${returnUrl}${inviteFlag}`} replace />;
 };
 
 function AppContent() {

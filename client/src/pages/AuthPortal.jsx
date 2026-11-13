@@ -12,7 +12,7 @@ function AuthPortal() {
     const navigate = useNavigate();
 
     const redirectTarget = searchParams.get('redirect') || '/';
-    const isJamInvite = redirectTarget.includes('/session') || searchParams.has('room');
+    const isJamInvite = searchParams.get('invite') === 'true' || redirectTarget.includes('invite=true');
 
     useEffect(() => {
         // Enforce silence upon entering the authentication gateway

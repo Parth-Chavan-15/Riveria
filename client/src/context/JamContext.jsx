@@ -165,9 +165,16 @@ export function JamProvider({ children }) {
   const getSavedRoom = () => {
     if (typeof window === 'undefined') return '';
     try {
-      const query = new URLSearchParams(window.location.search).get('room');
-      if (query) return query.toUpperCase();
-      return sessionStorage.getItem('reveria:active_jam_room') || localStorage.getItem('reveria:active_jam_room') || '';
+      // Clear legacy localStorage room key that caused stale cross-session popups
+      localStorage.removeItem('reveria:active_jam_room');
+
+      // ONLY restore active room if user is actively on the /session route
+      if (window.location.pathname === '/session') {
+        const query = new URLSearchParams(window.location.search).get('room');
+        if (query) return query.toUpperCase();
+        return sessionStorage.getItem('reveria:active_jam_room') || '';
+      }
+      return '';
     } catch {
       return '';
     }
@@ -880,12 +887,11 @@ export function JamProvider({ children }) {
       setRoomId(targetCode);
       playerRef.current?.resetRoomVersion?.(targetCode);
 
-      // Persist across tab switches and refreshes!
+      // Persist across tab switches and refreshes ONLY on /session!
       try {
         sessionStorage.setItem('reveria:active_jam_room', targetCode);
-        localStorage.setItem('reveria:active_jam_room', targetCode);
-        if (typeof window !== 'undefined' && window.history?.replaceState) {
-          window.history.replaceState({}, '', `${window.location.pathname}?room=${targetCode}`);
+        if (typeof window !== 'undefined' && window.history?.replaceState && window.location.pathname === '/session') {
+          window.history.replaceState({}, '', `/session?room=${targetCode}`);
         }
       } catch {}
 
@@ -944,11 +950,13 @@ export function JamProvider({ children }) {
     }
   }, [roomId, user, createPeer, dispatchSignal, handlePlaybackSync, addLog]);
 
-  // Auto-reconnect saved room on mount if user is authenticated
+  // Auto-reconnect saved room on mount ONLY if actively on /session
   useEffect(() => {
-    const saved = getSavedRoom();
-    if (saved && !joinedRoomRef.current) {
-      joinRoom(saved);
+    if (typeof window !== 'undefined' && window.location.pathname === '/session') {
+      const saved = getSavedRoom();
+      if (saved && !joinedRoomRef.current) {
+        joinRoom(saved);
+      }
     }
   }, [joinRoom]);
 
@@ -967,6 +975,9 @@ export function JamProvider({ children }) {
       try {
         sessionStorage.removeItem('reveria:active_jam_room');
         localStorage.removeItem('reveria:active_jam_room');
+        if (typeof window !== 'undefined' && window.history?.replaceState && window.location.pathname === '/session') {
+          window.history.replaceState({}, '', '/session');
+        }
       } catch {}
 
       await apiRequest('/session/leave', {
@@ -1154,7 +1165,7 @@ export function JamProvider({ children }) {
   const copyRoomInvite = useCallback(() => {
     const activeRoom = joinedRoomRef.current || joinedRoom;
     if (!activeRoom) return;
-    const inviteUrl = `${window.location.origin}/?room=${activeRoom}`;
+    const inviteUrl = `${window.location.origin}/session?room=${activeRoom}&invite=true`;
     navigator.clipboard?.writeText(inviteUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

@@ -216,7 +216,7 @@ export default function LandingPage() {
       if (token) {
         navigate(`/session?room=${encodeURIComponent(room.toUpperCase())}`, { replace: true });
       } else {
-        navigate(`/auth?redirect=${encodeURIComponent(`/session?room=${room.toUpperCase()}`)}`, { replace: true });
+        navigate(`/auth?redirect=${encodeURIComponent(`/session?room=${room.toUpperCase()}`)}&invite=true`, { replace: true });
       }
     }
   }, [searchParams, token, navigate]);

@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 
-const TARGET_URL = 'https://riveria-umber.vercel.app';
+const TARGET_URL = process.env.TARGET_URL || 'https://riveria-umber.vercel.app';
 const TEST_ROOM = 'TEST-INVITE-8821';
 
 async function runTests() {

@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const path = require('path');
 
 const TARGET_URL = 'https://riveria-umber.vercel.app';
 const ROOM_CODE = 'OBSIDIAN-2110';
@@ -126,36 +127,16 @@ async function testGroupJamLocalAudio() {
     console.log('Browser 2 Room:', await page2.evaluate(() => document.querySelector('h3.font-mono')?.textContent?.trim()));
 
     // Mount a local audio track on Browser 1 in RAM
-    console.log('Creating and mounting a private local audio file on Browser 1...');
-    const mountedCount = await page1.evaluate(async () => {
-      try {
-        const res = await fetch('/audio/post-malone-sunflower.mp3');
-        const blob = await res.blob();
-        const file = new File([blob], 'Private_Acoustic_Local.mp3', { type: 'audio/mpeg' });
-        const input = document.createElement('input');
-        input.type = 'file';
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        
-        // Find player context via custom event or helper
-        const addBtn = document.querySelector('button:has-text("Add Track to Jam")');
-        if (addBtn) addBtn.click();
-        await new Promise(r => setTimeout(r, 600));
+    console.log('Opening "Add Track to Jam" modal on Browser 1...');
+    const addTrackBtn = page1.locator('button:has-text("Add Track to Jam")').first();
+    await addTrackBtn.click();
+    await page1.waitForTimeout(1000);
 
-        const filePicker = document.querySelector('#jam-local-file-picker');
-        if (filePicker) {
-          filePicker.files = dt.files;
-          filePicker.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        return 1;
-      } catch (e) {
-        return 0;
-      }
-    });
-
+    console.log('Mounting local audio file from disk via #jam-local-file-picker...');
+    const audioFilePath = path.resolve(__dirname, 'client/public/audio/post-malone-sunflower.mp3');
+    const filePicker = page1.locator('#jam-local-file-picker');
+    await filePicker.setInputFiles(audioFilePath);
     await page1.waitForTimeout(2000);
-    console.log('Mounted local files on Browser 1:', mountedCount);
 
     // Click "+ Add P2P" button in the modal on Browser 1
     console.log('Adding private local track to collaborative playlist...');
@@ -165,13 +146,6 @@ async function testGroupJamLocalAudio() {
       console.log('✓ Clicked + Add P2P');
     }
     await page1.waitForTimeout(2000);
-
-    // Close modal if open
-    await page1.evaluate(() => {
-      const close = document.querySelector('button span.material-symbols-outlined:has-text("close")');
-      if (close) close.parentElement.click();
-    });
-    await page1.waitForTimeout(1000);
 
     // Check if Browser 2 sees the local track in the playlist
     const b2Playlist = await page2.evaluate(() => {

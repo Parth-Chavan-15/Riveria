@@ -4,6 +4,14 @@ import { audioCoordinator } from '../services/audioCoordinator';
 import { PlayerContext } from './playerContextDef';
 import { extractAudioMetadata } from '../utils/audioMetadata';
 
+const STATIC_TRACK_MAP = {
+  sunflower: '/audio/post-malone-sunflower.mp3',
+  birds: '/audio/imagine-dragons-birds.mp3',
+  thunder: '/audio/imagine-dragons-thunder.mp3',
+  believer: '/audio/imagine-dragons-believer.mp3',
+  happier: '/audio/marshmello-happier.mp3'
+};
+
 function sourceFor(track) {
   if (!track) return '';
   if (track.localUrl) return track.localUrl;
@@ -13,6 +21,15 @@ function sourceFor(track) {
     // For local private audio, only in-memory blob URLs are valid; never request from server!
     return track.localUrl || '';
   }
+
+  // Fast Edge CDN path for the 5 movement tracks (< 15ms start time)
+  const titleKey = String(track.title || '').trim().toLowerCase();
+  for (const [key, path] of Object.entries(STATIC_TRACK_MAP)) {
+    if (titleKey.includes(key)) {
+      return path;
+    }
+  }
+
   if (track.audioSrc) return track.audioSrc;
   if (track.audioFile?.filename && tid) return apiUrl(`/tracks/${tid}/stream`);
   if (tid) return apiUrl(`/tracks/${tid}/stream`);
@@ -349,7 +366,7 @@ export function PlayerProvider({ children }) {
 
     const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
     const nextId = track._id || track.id;
-    const isDifferent = currentId !== nextId;
+    const isDifferent = currentId !== nextId || !audio.src || (audio.src !== source && !audio.src.endsWith(source));
 
     if (isDifferent) {
       trackLoadingRef.current = nextId;
@@ -634,7 +651,7 @@ export function PlayerProvider({ children }) {
     const isTargetPlaying = Boolean(remoteIsPlaying);
     const nowServerEst = clientNow + clockSkewRef.current;
     const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
-    const isDifferentTrack = currentId !== targetId;
+    const isDifferentTrack = currentId !== targetId || !audio.src;
     const isExplicitTrackChange = action === 'track_change' || isDifferentTrack;
     const isExplicitSeek = action === 'seek';
 
@@ -667,11 +684,16 @@ export function PlayerProvider({ children }) {
 
       // If local track and no localUrl in memory yet, hold state and notify JamContext to fetch P2P stream
       if (track.type === 'Local' && !track.localUrl) {
-        currentTrackRef.current = track;
-        setCurrentTrack(track);
-        setIsPlaying(isTargetPlaying);
-        window.dispatchEvent(new CustomEvent('reveria:p2p-track-needed', { detail: { trackId: targetId } }));
-        return;
+        const localCached = localTracksRef.current.find((t) => (t._id || t.id) === targetId);
+        if (localCached?.localUrl) {
+          track = localCached;
+        } else {
+          currentTrackRef.current = track;
+          setCurrentTrack(track);
+          setIsPlaying(isTargetPlaying);
+          window.dispatchEvent(new CustomEvent('reveria:p2p-track-needed', { detail: { trackId: targetId } }));
+          return;
+        }
       }
 
       await playTrack(track, allTracks, false /* do not autoplay yet; schedule synchronously */, true /* fromSync */);

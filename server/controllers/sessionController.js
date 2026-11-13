@@ -64,11 +64,78 @@ exports.joinRoom = async (req, res, next) => {
       (p) => now - new Date(p.lastSeen) < PEER_TIMEOUT_MS
     );
 
+    let roomPlaylist = updatedRoom?.playlist || [];
+    if (!roomPlaylist || roomPlaylist.length === 0) {
+      roomPlaylist = [
+        {
+          id: '6af537969bb5c204242f3a2b',
+          _id: '6af537969bb5c204242f3a2b',
+          title: 'Sunflower',
+          artist: 'Post Malone & Swae Lee',
+          duration: '02:38',
+          type: 'Cloud',
+          audioSrc: '/audio/post-malone-sunflower.mp3',
+          imageSrc: '/covers/sunflower.png',
+          imageColor: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950',
+          addedBy: 'Riveria Haven'
+        },
+        {
+          id: '6af537969bb5c204242f3a2c',
+          _id: '6af537969bb5c204242f3a2c',
+          title: 'Birds',
+          artist: 'Imagine Dragons',
+          duration: '03:42',
+          type: 'Cloud',
+          audioSrc: '/audio/imagine-dragons-birds.mp3',
+          imageSrc: '/covers/birds.jpg',
+          imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
+          addedBy: 'Riveria Haven'
+        },
+        {
+          id: '6af537969bb5c204242f3a2a',
+          _id: '6af537969bb5c204242f3a2a',
+          title: 'Thunder',
+          artist: 'Imagine Dragons',
+          duration: '03:07',
+          type: 'Cloud',
+          audioSrc: '/audio/imagine-dragons-thunder.mp3',
+          imageSrc: '/covers/thunder.jpg',
+          imageColor: 'bg-gradient-to-br from-purple-600 via-indigo-700 to-zinc-950',
+          addedBy: 'Riveria Haven'
+        },
+        {
+          id: '6af537959bb5c204242f3a29',
+          _id: '6af537959bb5c204242f3a29',
+          title: 'Believer',
+          artist: 'Imagine Dragons',
+          duration: '03:24',
+          type: 'Cloud',
+          audioSrc: '/audio/imagine-dragons-believer.mp3',
+          imageSrc: '/covers/believer.jpg',
+          imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
+          addedBy: 'Riveria Haven'
+        },
+        {
+          id: '6af537969bb5c204242f3a2d',
+          _id: '6af537969bb5c204242f3a2d',
+          title: 'Happier',
+          artist: 'Marshmello ft. Bastille',
+          duration: '03:53',
+          type: 'Cloud',
+          audioSrc: '/audio/marshmello-happier.mp3',
+          imageSrc: '/covers/happier.jpg',
+          imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-zinc-950',
+          addedBy: 'Riveria Haven'
+        }
+      ];
+      JamRoom.updateOne({ roomId: normalizedRoom }, { $set: { playlist: roomPlaylist } }).catch(() => {});
+    }
+
     res.json({
       ok: true,
       roomId: normalizedRoom,
       peers: activePeers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
-      playlist: updatedRoom?.playlist || [],
+      playlist: roomPlaylist,
       currentPlayback: updatedRoom?.currentPlayback || null,
       serverTime: Date.now()
     });

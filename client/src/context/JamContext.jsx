@@ -27,6 +27,69 @@ function generateRoomCode() {
   return `${adj}-${num}`;
 }
 
+const DEFAULT_ROOM_TRACKS = [
+  {
+    id: '6af537969bb5c204242f3a2b',
+    _id: '6af537969bb5c204242f3a2b',
+    title: 'Sunflower',
+    artist: 'Post Malone & Swae Lee',
+    duration: '02:38',
+    type: 'Cloud',
+    audioSrc: '/audio/post-malone-sunflower.mp3',
+    imageSrc: '/covers/sunflower.png',
+    imageColor: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950',
+    addedBy: 'Riveria Haven'
+  },
+  {
+    id: '6af537969bb5c204242f3a2c',
+    _id: '6af537969bb5c204242f3a2c',
+    title: 'Birds',
+    artist: 'Imagine Dragons',
+    duration: '03:42',
+    type: 'Cloud',
+    audioSrc: '/audio/imagine-dragons-birds.mp3',
+    imageSrc: '/covers/birds.jpg',
+    imageColor: 'bg-gradient-to-br from-cyan-600 via-blue-700 to-slate-950',
+    addedBy: 'Riveria Haven'
+  },
+  {
+    id: '6af537969bb5c204242f3a2a',
+    _id: '6af537969bb5c204242f3a2a',
+    title: 'Thunder',
+    artist: 'Imagine Dragons',
+    duration: '03:07',
+    type: 'Cloud',
+    audioSrc: '/audio/imagine-dragons-thunder.mp3',
+    imageSrc: '/covers/thunder.jpg',
+    imageColor: 'bg-gradient-to-br from-purple-600 via-indigo-700 to-zinc-950',
+    addedBy: 'Riveria Haven'
+  },
+  {
+    id: '6af537959bb5c204242f3a29',
+    _id: '6af537959bb5c204242f3a29',
+    title: 'Believer',
+    artist: 'Imagine Dragons',
+    duration: '03:24',
+    type: 'Cloud',
+    audioSrc: '/audio/imagine-dragons-believer.mp3',
+    imageSrc: '/covers/believer.jpg',
+    imageColor: 'bg-gradient-to-br from-rose-600 via-purple-700 to-indigo-950',
+    addedBy: 'Riveria Haven'
+  },
+  {
+    id: '6af537969bb5c204242f3a2d',
+    _id: '6af537969bb5c204242f3a2d',
+    title: 'Happier',
+    artist: 'Marshmello ft. Bastille',
+    duration: '03:53',
+    type: 'Cloud',
+    audioSrc: '/audio/marshmello-happier.mp3',
+    imageSrc: '/covers/happier.jpg',
+    imageColor: 'bg-gradient-to-br from-violet-600 via-fuchsia-700 to-zinc-950',
+    addedBy: 'Riveria Haven'
+  }
+];
+
 // Background-resilient Web Worker timer (prevents browser throttle to 1000ms+ when tab is minimized)
 function createWorkerTimer(callback, ms) {
   if (typeof window !== 'undefined' && typeof Worker !== 'undefined' && typeof Blob !== 'undefined') {
@@ -239,16 +302,17 @@ export function JamProvider({ children }) {
 
   // Stream local audio file bytes across WebRTC DataChannel directly to connected peers with flow control
   const streamLocalTrackToPeers = useCallback(async (track) => {
-    if (!track?.rawFile) return;
     try {
+      const fileOrBlob = track?.rawFile || track?.rawBlob || (track?.localUrl ? await (await fetch(track.localUrl)).blob().catch(() => null) : null);
+      if (!fileOrBlob) return;
       addLog('P2P_FILE', `Broadcasting private audio stream for "${track.title}" to peer(s)...`);
-      const buffer = await track.rawFile.arrayBuffer();
+      const buffer = await fileOrBlob.arrayBuffer();
       const metaPacket = {
         type: 'START_AUDIO_TRANSFER',
         trackId: track._id || track.id,
         title: track.title,
         artist: track.artist,
-        mimeType: track.rawFile.type || 'audio/mpeg',
+        mimeType: fileOrBlob.type || 'audio/mpeg',
         totalBytes: buffer.byteLength,
         startWallTime: Date.now(),
         currentPos: playerRef.current?.getAudioCurrentTime ? playerRef.current.getAudioCurrentTime() : (playerRef.current?.position || 0)
@@ -320,18 +384,23 @@ export function JamProvider({ children }) {
         try { channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() })); } catch {}
       };
 
-      channel.onmessage = (event) => {
+      channel.onmessage = async (event) => {
         try {
-          if (event.data instanceof ArrayBuffer) {
+          let data = event.data;
+          if (data instanceof Blob) {
+            data = await data.arrayBuffer();
+          }
+          if (data instanceof ArrayBuffer) {
             const transfer = activeIncomingTransferRef.current;
             if (transfer) {
-              transfer.chunks.push(event.data);
-              transfer.receivedBytes += event.data.byteLength;
+              transfer.chunks.push(data);
+              transfer.receivedBytes += data.byteLength;
             }
             return;
           }
 
-          const packet = JSON.parse(event.data);
+          const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          const packet = JSON.parse(text);
           if (packet.type === 'PLAYBACK_SYNC') {
             handlePlaybackSync(packet);
           } else if (packet.type === 'PLAYLIST_SYNC') {
@@ -379,11 +448,19 @@ export function JamProvider({ children }) {
               const targetPos = Math.max(0, (transfer.currentPos || 0) + transferElapsed);
 
               addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Locking live playback at ${targetPos.toFixed(1)}s.`);
-              playerRef.current?.playTrack?.(p2pTrack, collabPlaylistRef.current, true, true /* fromSync = true! Prevents feedback echo loop! */);
-              if (targetPos > 0) {
-                setTimeout(() => {
-                  playerRef.current?.seek?.(targetPos);
-                }, 100);
+              await playerRef.current?.playTrack?.(p2pTrack, collabPlaylistRef.current, false, true /* fromSync = true! Prevents feedback echo loop! */);
+              const audioElem = window.__riveriaAudio;
+              if (audioElem) {
+                if (targetPos > 0) {
+                  if (audioElem.readyState >= 1) {
+                    audioElem.currentTime = targetPos;
+                  } else {
+                    audioElem.addEventListener('loadedmetadata', () => {
+                      try { audioElem.currentTime = targetPos; } catch {}
+                    }, { once: true });
+                  }
+                }
+                audioElem.play().catch(() => {});
               }
               activeIncomingTransferRef.current = null;
             }
@@ -815,7 +892,25 @@ export function JamProvider({ children }) {
         }
       } catch {}
 
-      if (result.playlist) setCollabPlaylist(result.playlist);
+      if (result.playlist && result.playlist.length > 0) {
+        setCollabPlaylist(result.playlist);
+      } else {
+        const source = (tracksRef.current && tracksRef.current.length > 0) ? tracksRef.current : DEFAULT_ROOM_TRACKS;
+        const initialTracks = source.slice(0, 5).map((t) => ({
+          id: t._id || t.id,
+          _id: t._id || t.id,
+          title: t.title,
+          artist: t.artist,
+          duration: t.duration,
+          type: 'Cloud',
+          audioSrc: t.audioSrc,
+          imageSrc: t.imageSrc,
+          imageColor: t.imageColor,
+          addedBy: 'Riveria Haven'
+        }));
+        setCollabPlaylist(initialTracks);
+        broadcastPlaylist(initialTracks);
+      }
       if (result.currentPlayback) {
         try {
           handlePlaybackSync({

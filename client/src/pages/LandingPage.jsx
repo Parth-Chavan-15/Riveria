@@ -230,7 +230,7 @@ export default function LandingPage() {
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
   const [totalDurationFormatted, setTotalDurationFormatted] = useState('02:38');
   const [activeSection, setActiveSection] = useState(0);
-  const [followScroll, setFollowScroll] = useState(false);
+  const [followScroll, setFollowScroll] = useState(true);
   const [showFloatingDock, setShowFloatingDock] = useState(false);
 
   // Multi-threaded Audio Pool & References
@@ -540,18 +540,11 @@ export default function LandingPage() {
       current.pause();
       setIsPlaying(false);
     } else {
-      if (current && current.paused && current.src) {
-        try {
-          audioCoordinator.claimExclusivePlayback(current, 'landing-page');
-          current.volume = volume / 100;
-          await current.play();
-          setIsPlaying(true);
-          return;
-        } catch {}
-      }
-      await playTrackDirect(currentTrackIndex, true, false);
+      setFollowScroll(true);
+      const targetIdx = targetSectionIdxRef.current ?? currentTrackIndex;
+      await playTrackDirect(targetIdx, true, false);
     }
-  }, [isPlaying, currentTrackIndex, volume, playTrackDirect]);
+  }, [isPlaying, currentTrackIndex, playTrackDirect]);
 
   // Spacebar play/pause keyboard shortcut
   useEffect(() => {
@@ -624,63 +617,56 @@ export default function LandingPage() {
   }, [isPlaying]);
 
   // 3. High-Velocity Scroll Detection & Fluid Transition Stabilization
+  // 3. Responsive Section Detection & Fluid Musical Transition
   useEffect(() => {
-    const handleScroll = () => {
+    const updateActiveSection = () => {
       setShowFloatingDock(window.scrollY > 350);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
-  useEffect(() => {
-    const observerOptions = {
-      root: null,
-      rootMargin: '-15% 0px -25% 0px',
-      threshold: [0.15, 0.4, 0.7],
-    };
+      const midpoint = window.innerHeight * 0.45;
+      let activeIdx = 0;
+      let minDistance = Infinity;
 
-    const sectionElements = SECTIONS.map((sec) => document.getElementById(sec.id)).filter(Boolean);
-
-    const observer = new IntersectionObserver((entries) => {
-      let bestEntry = null;
-      let maxRatio = 0;
-
-      entries.forEach((entry) => {
-        if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
-          maxRatio = entry.intersectionRatio;
-          bestEntry = entry;
+      SECTIONS.forEach((sec, idx) => {
+        const el = document.getElementById(sec.id);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= midpoint && rect.bottom >= midpoint) {
+          activeIdx = idx;
+          minDistance = 0;
+        } else if (minDistance > 0) {
+          const dist = Math.abs(rect.top - midpoint);
+          if (dist < minDistance) {
+            minDistance = dist;
+            activeIdx = idx;
+          }
         }
       });
 
-      if (bestEntry) {
-        const sectionIndex = SECTIONS.findIndex((sec) => sec.id === bestEntry.target.id);
-        if (sectionIndex !== -1) {
-          setActiveSection(sectionIndex);
-          targetSectionIdxRef.current = sectionIndex;
+      setActiveSection(activeIdx);
+      targetSectionIdxRef.current = activeIdx;
 
-          if (followScroll) {
-            if (scrollDebounceTimerRef.current) {
-              clearTimeout(scrollDebounceTimerRef.current);
-            }
-
-            // Settle scroll velocity so reading and fast flicking don't thrash or cut off audio
-            scrollDebounceTimerRef.current = setTimeout(() => {
-              const finalTarget = targetSectionIdxRef.current;
-              if (finalTarget !== currentTrackIndexRef.current && isPlayingRef.current) {
-                playTrackDirect(finalTarget, true, true);
-              }
-            }, 1200);
-          }
+      if (followScroll) {
+        if (scrollDebounceTimerRef.current) {
+          clearTimeout(scrollDebounceTimerRef.current);
         }
-      }
-    }, observerOptions);
 
-    sectionElements.forEach((el) => observer.observe(el));
+        scrollDebounceTimerRef.current = setTimeout(() => {
+          const finalTarget = targetSectionIdxRef.current;
+          if (finalTarget !== currentTrackIndexRef.current && isPlayingRef.current) {
+            playTrackDirect(finalTarget, true, true);
+          }
+        }, 250);
+      }
+    };
+
+    window.addEventListener('scroll', updateActiveSection, { passive: true });
+    updateActiveSection();
+
     return () => {
       if (scrollDebounceTimerRef.current) {
         clearTimeout(scrollDebounceTimerRef.current);
       }
-      observer.disconnect();
+      window.removeEventListener('scroll', updateActiveSection);
     };
   }, [followScroll, playTrackDirect]);
 

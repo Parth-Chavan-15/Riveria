@@ -249,9 +249,9 @@ export function PlayerProvider({ children }) {
     // Mobile Web Autoplay Unlock: satisfy mobile browser gesture policies on user touch
     const unlockAudio = () => {
       const a = audioRef.current;
-      if (a) {
+      if (a && currentTrackRef.current && isPlayingRef.current) {
         audioCoordinator.claimExclusivePlayback(a, 'player-context');
-        if (a.paused && isPlayingRef.current) {
+        if (a.paused) {
           a.play().then(() => {
             setIsAutoplayBlocked(false);
           }).catch(() => {});

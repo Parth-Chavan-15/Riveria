@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { usePlayer } from '../hooks/usePlayer';
+import { dspEngine } from '../services/dspEngine';
 
 const EQ_PRESETS = {
   flat: { name: 'Studio Reference (Flat)', bands: [0, 0, 0, 0, 0] },
@@ -67,6 +68,12 @@ export default function Settings() {
     setEqBands([...bands]);
     localStorage.setItem('reveria:eqPreset', presetKey);
     localStorage.setItem('reveria:eqBands', JSON.stringify(bands));
+    dspEngine.setEqualizerBands(bands);
+    window.dispatchEvent(
+      new CustomEvent('reveria:dsp-settings-changed', {
+        detail: { equalizerBands: bands, spatialSoundstage: stereoWidth, dynamicNormalization: normalizeVolume }
+      })
+    );
   };
 
   const handleBandChange = (index, value) => {
@@ -76,6 +83,36 @@ export default function Settings() {
     setSelectedPreset('custom');
     localStorage.setItem('reveria:eqPreset', 'custom');
     localStorage.setItem('reveria:eqBands', JSON.stringify(newBands));
+    dspEngine.setEqualizerBands(newBands);
+    window.dispatchEvent(
+      new CustomEvent('reveria:dsp-settings-changed', {
+        detail: { equalizerBands: newBands, spatialSoundstage: stereoWidth, dynamicNormalization: normalizeVolume }
+      })
+    );
+  };
+
+  const handleStereoWidthChange = (val) => {
+    const num = Number(val);
+    setStereoWidth(num);
+    localStorage.setItem('reveria:stereoWidth', String(num));
+    dspEngine.setSpatialWidth(num);
+    window.dispatchEvent(
+      new CustomEvent('reveria:dsp-settings-changed', {
+        detail: { equalizerBands: eqBands, spatialSoundstage: num, dynamicNormalization: normalizeVolume }
+      })
+    );
+  };
+
+  const handleNormalizationChange = () => {
+    const nextVal = !normalizeVolume;
+    setNormalizeVolume(nextVal);
+    localStorage.setItem('reveria:normalizeVolume', String(nextVal));
+    dspEngine.setDynamicNormalization(nextVal);
+    window.dispatchEvent(
+      new CustomEvent('reveria:dsp-settings-changed', {
+        detail: { equalizerBands: eqBands, spatialSoundstage: stereoWidth, dynamicNormalization: nextVal }
+      })
+    );
   };
 
   const handleDeviceChange = async (deviceId) => {
@@ -158,6 +195,19 @@ export default function Settings() {
     localStorage.setItem('reveria:eqPreset', selectedPreset);
     localStorage.setItem('reveria:eqBands', JSON.stringify(eqBands));
 
+    const allSettings = {
+      streamQuality,
+      latencyMode,
+      dynamicNormalization: normalizeVolume,
+      crossfade,
+      spatialSoundstage: stereoWidth,
+      soundstage,
+      equalizerPreset: selectedPreset,
+      equalizerBands: eqBands
+    };
+    localStorage.setItem('reveria:settings', JSON.stringify(allSettings));
+    dspEngine.applySettings(allSettings);
+
     setSavedMessage('Audiophile engine preferences and DSP parameters saved successfully.');
     setTimeout(() => setSavedMessage(''), 3500);
   };
@@ -239,7 +289,7 @@ export default function Settings() {
             </div>
             <button
               type="button"
-              onClick={() => setNormalizeVolume(!normalizeVolume)}
+              onClick={handleNormalizationChange}
               className={`w-12 h-6 rounded-full transition-colors relative p-1 ${normalizeVolume ? 'bg-primary' : 'bg-white/20'}`}
               aria-label="Toggle Dynamic Volume Normalization"
             >
@@ -420,7 +470,7 @@ export default function Settings() {
                 max="200"
                 step="10"
                 value={stereoWidth}
-                onChange={(e) => setStereoWidth(Number(e.target.value))}
+                onChange={(e) => handleStereoWidthChange(e.target.value)}
                 className="w-full h-2 appearance-none bg-white/10 rounded-full outline-none accent-amber-400 cursor-pointer"
               />
               <p className="mt-2 text-xs text-slate-500">Acoustic psychoacoustic stereo field expansion for open-back headphones.</p>

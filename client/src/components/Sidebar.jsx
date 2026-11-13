@@ -13,13 +13,17 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     { to: '/admin/users', label: 'User Governance', icon: 'admin_panel_settings' },
   ];
 
+  const adminStudioLinks = [
+    { to: '/', label: 'Discovery', icon: 'explore' },
+    { to: '/sync', label: 'Master Ingest & Staging', icon: 'cloud_upload' },
+    { to: '/session', label: 'WebRTC Jam Director', icon: 'settings_input_antenna' },
+    { to: '/settings', label: 'Mastering DSP & EQ', icon: 'tune' },
+  ];
+
   const listenerLinks = [
     { to: '/', label: 'Discovery', icon: 'explore' },
     { to: '/sync', label: 'Local Sync Hub', icon: 'sync_desktop' },
     { to: '/session', label: 'WebRTC Session', icon: 'settings_input_antenna' },
-  ];
-
-  const bottomLinks = [
     { to: '/settings', label: 'Engine Settings', icon: 'tune' },
   ];
 
@@ -93,15 +97,13 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
           </div>
         )}
 
-        {/* Standard Listener Section */}
+        {/* Secondary Navigation Section */}
         <div>
-          {isAdmin && (
-            <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-500 px-3 mb-2">
-              Listener Suite
-            </p>
-          )}
+          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-500 px-3 mb-2">
+            {isAdmin ? 'Studio & Broadcast' : 'Listener Suite'}
+          </p>
           <ul className="flex flex-col gap-1.5">
-            {listenerLinks.map((link) => {
+            {(isAdmin ? adminStudioLinks : listenerLinks).map((link) => {
               const isActive = path === link.to;
               return (
                 <Link
@@ -127,28 +129,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
           </ul>
         </div>
       </div>
-
-      {/* Bottom Settings Link */}
-      <ul className="flex flex-col gap-2 mt-auto border-t border-white/10 pt-4">
-        {bottomLinks.map((link) => {
-          const isActive = path === link.to;
-          return (
-            <Link
-              key={link.to}
-              to={link.to}
-              onClick={onClose}
-              className={`flex items-center gap-3 py-2.5 rounded-xl px-3.5 transition-all duration-200 ${
-                isActive
-                  ? 'text-white font-bold border-l-4 border-primary bg-white/10'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">{link.icon}</span>
-              <span className="text-xs font-semibold">{link.label}</span>
-            </Link>
-          );
-        })}
-      </ul>
     </>
   );
 

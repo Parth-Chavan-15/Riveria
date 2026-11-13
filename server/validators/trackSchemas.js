@@ -13,8 +13,8 @@ const trackFields = {
   duration: duration.optional(),
   type: trackTypeEnum.optional(),
   imageColor: z.string().trim().min(1).max(180).regex(/^[a-z0-9\-\[\]#(),.%/\s]+$/i, 'Invalid image style').optional(),
-  imageSrc: z.string().url().max(2048).optional(),
-  audioSrc: z.string().url().max(2048).optional()
+  imageSrc: z.string().trim().max(2048).optional(),
+  audioSrc: z.string().trim().max(2048).optional()
 };
 
 const createTrack = z.object(trackFields).strict();

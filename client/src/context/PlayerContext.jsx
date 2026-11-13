@@ -3,6 +3,7 @@ import { apiUrl } from '../services/api';
 import { audioCoordinator } from '../services/audioCoordinator';
 import { PlayerContext } from './playerContextDef';
 import { extractAudioMetadata } from '../utils/audioMetadata';
+import { dspEngine } from '../services/dspEngine';
 
 const STATIC_TRACK_MAP = {
   sunflower: '/audio/post-malone-sunflower.mp3',
@@ -382,6 +383,7 @@ export function PlayerProvider({ children }) {
 
     if (autoPlay) {
       try {
+        dspEngine.init(audio);
         audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
         setIsPlaying(true);
@@ -406,6 +408,7 @@ export function PlayerProvider({ children }) {
 
     if (nextIsPlaying) {
       try {
+        dspEngine.init(audio);
         audioCoordinator.claimExclusivePlayback(audio, 'player-context');
         await audio.play();
         setIsPlaying(true);

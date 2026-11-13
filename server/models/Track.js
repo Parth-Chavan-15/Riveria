@@ -9,6 +9,8 @@ const trackSchema = new mongoose.Schema({
     imageSrc: { type: String, default: '', maxlength: 2048 },
     audioSrc: { type: String, default: '', maxlength: 2048 },
     gridFsId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    coverGridFsId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    coverMimeType: { type: String, default: 'image/jpeg' },
     audioFile: {
         filename: { type: String, default: '' },
         mimeType: { type: String, default: '' },

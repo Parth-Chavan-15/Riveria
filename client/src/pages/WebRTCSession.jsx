@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { useJam } from '../context/JamContext';
 import { usePlayer } from '../hooks/usePlayer';
+import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '../services/api';
 
 export default function WebRTCSession() {
   const player = usePlayer();
@@ -23,6 +26,42 @@ export default function WebRTCSession() {
     handlePlayCollabTrack,
     copyRoomInvite
   } = useJam();
+
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [directorNotice, setDirectorNotice] = useState('');
+
+  const handleForceSyncPeers = () => {
+    if (!joinedRoom || !player.currentTrack) return;
+    window.dispatchEvent(
+      new CustomEvent('reveria:jam-action', {
+        detail: {
+          action: 'seek',
+          track: player.currentTrack,
+          isPlaying: player.isPlaying,
+          position: player.position
+        }
+      })
+    );
+    setDirectorNotice('Acoustic Phase-Lock: High-priority sync broadcast delivered to all mesh peers.');
+    setTimeout(() => setDirectorNotice(''), 4000);
+  };
+
+  const handleDirectorIntercom = async () => {
+    const msg = prompt('Enter Director Intercom broadcast to beam across all mesh peers:');
+    if (!msg || !msg.trim()) return;
+
+    try {
+      await apiRequest('/admin/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ message: `[JAM DIRECT]: ${msg.trim()}`, level: 'info' })
+      });
+      setDirectorNotice(`Broadcast delivered: "${msg.trim()}"`);
+      setTimeout(() => setDirectorNotice(''), 4000);
+    } catch (e) {
+      setDirectorNotice(`Broadcast failed: ${e.message}`);
+    }
+  };
 
   return (
     <main className="flex-1 overflow-y-auto px-4 pb-36 pt-24 md:ml-80 md:px-8 md:pt-28 text-white max-w-6xl">
@@ -104,6 +143,47 @@ export default function WebRTCSession() {
                   </button>
                 </div>
               </div>
+
+              {/* Admin Director Override Suite */}
+              {isAdmin && joinedRoom && (
+                <div className="p-4 rounded-2xl bg-[#140c1d] border border-rose-500/30 text-xs space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.12)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-rose-500/20">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-rose-400 text-lg">admin_panel_settings</span>
+                      <span className="font-bold text-white uppercase tracking-wider text-[11px]">WebRTC Jam Director Suite</span>
+                      <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[9px] border border-rose-500/30">ROOT CONTROL</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Active Room: <strong>{joinedRoom}</strong> &bull; {peersList.length} Connected Mesh Nodes
+                    </span>
+                  </div>
+
+                  {directorNotice && (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">check_circle</span>
+                      <span>{directorNotice}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      onClick={handleForceSyncPeers}
+                      className="px-3 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 hover:brightness-110 active:scale-95 shadow-[0_0_15px_rgba(244,63,94,0.3)] transition-all"
+                    >
+                      <span className="material-symbols-outlined text-sm">sync</span>
+                      <span>Force Multi-Peer Acoustic Re-Sync</span>
+                    </button>
+
+                    <button
+                      onClick={handleDirectorIntercom}
+                      className="px-3 py-2 rounded-xl bg-white/10 text-white font-semibold text-xs flex items-center gap-1.5 hover:bg-white/15 active:scale-95 border border-white/10 transition-all"
+                    >
+                      <span className="material-symbols-outlined text-sm">campaign</span>
+                      <span>Director Intercom Announcement</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Sync Controls */}
               <div className="flex flex-wrap items-center justify-between gap-4">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../services/api';
 import { usePlayer } from '../hooks/usePlayer';
+import { extractAudioMetadata } from '../utils/audioMetadata';
 
 export default function AdminCatalog() {
   const { playTrack, currentTrack, isPlaying } = usePlayer();
@@ -17,6 +18,9 @@ export default function AdminCatalog() {
   const [uploadDuration, setUploadDuration] = useState('03:30');
   const [uploadCover, setUploadCover] = useState('/covers/sunflower.png');
   const [audioFile, setAudioFile] = useState(null);
+  const [embeddedCoverUrl, setEmbeddedCoverUrl] = useState(null);
+  const [useEmbeddedCover, setUseEmbeddedCover] = useState(true);
+  const [customCoverFile, setCustomCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Edit Modal State
@@ -43,6 +47,44 @@ export default function AdminCatalog() {
     fetchTracks();
   }, [fetchTracks]);
 
+  const handleAudioFileSelection = async (file) => {
+    if (!file) {
+      setAudioFile(null);
+      return;
+    }
+    setAudioFile(file);
+
+    try {
+      // 1. Extract ID3 metadata (Title, Artist, Embedded Cover)
+      const meta = await extractAudioMetadata(file);
+      if (meta.title && (!uploadTitle || uploadTitle === '')) {
+        setUploadTitle(meta.title);
+      }
+      if (meta.artist && (!uploadArtist || uploadArtist === '')) {
+        setUploadArtist(meta.artist);
+      }
+      if (meta.thumbnailUrl) {
+        setEmbeddedCoverUrl(meta.thumbnailUrl);
+        setUseEmbeddedCover(true);
+      } else {
+        setEmbeddedCoverUrl(null);
+        setUseEmbeddedCover(false);
+      }
+
+      // 2. Extract Duration from audio
+      const tempAudio = new Audio(URL.createObjectURL(file));
+      tempAudio.addEventListener('loadedmetadata', () => {
+        if (tempAudio.duration && isFinite(tempAudio.duration)) {
+          const mins = Math.floor(tempAudio.duration / 60);
+          const secs = Math.floor(tempAudio.duration % 60);
+          setUploadDuration(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+        }
+      });
+    } catch (e) {
+      console.warn('Metadata inspection deferred:', e);
+    }
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!uploadTitle.trim() || !uploadArtist.trim()) {
@@ -59,7 +101,21 @@ export default function AdminCatalog() {
         formData.append('title', uploadTitle.trim());
         formData.append('artist', uploadArtist.trim());
         formData.append('duration', uploadDuration.trim() || '03:30');
-        formData.append('imageSrc', uploadCover.trim() || '/covers/sunflower.png');
+
+        if (useEmbeddedCover && embeddedCoverUrl) {
+          try {
+            const resp = await fetch(embeddedCoverUrl);
+            const blob = await resp.blob();
+            const coverFile = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
+            formData.append('cover', coverFile);
+          } catch {
+            formData.append('imageSrc', uploadCover.trim() || '/covers/sunflower.png');
+          }
+        } else if (customCoverFile) {
+          formData.append('cover', customCoverFile);
+        } else {
+          formData.append('imageSrc', uploadCover.trim() || '/covers/sunflower.png');
+        }
 
         await apiRequest('/tracks/upload', {
           method: 'POST',
@@ -80,11 +136,14 @@ export default function AdminCatalog() {
         });
       }
 
-      setNotice(`Track "${uploadTitle}" successfully added to master catalog!`);
+      setNotice(`Track "${uploadTitle}" successfully deployed to MongoDB GridFS Cloud!`);
       setShowUploadModal(false);
       setUploadTitle('');
       setUploadArtist('');
       setAudioFile(null);
+      setEmbeddedCoverUrl(null);
+      setUseEmbeddedCover(true);
+      setCustomCoverFile(null);
       fetchTracks();
       setTimeout(() => setNotice(''), 4000);
     } catch (err) {
@@ -363,9 +422,75 @@ export default function AdminCatalog() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                    Master Audio File (MP3, FLAC, WAV, AAC, M4A)
+                  </label>
+                  <input
+                    type="file"
+                    accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg"
+                    onChange={(e) => handleAudioFileSelection(e.target.files?.[0] || null)}
+                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-black hover:file:brightness-110 cursor-pointer"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Extracts ID3 tags, title, artist, duration, and embedded APIC cover art automatically.
+                  </p>
+                </div>
+
+                {/* Embedded Artwork & Cover Selector */}
+                {embeddedCoverUrl ? (
+                  <div className="p-3.5 rounded-xl bg-white/5 border border-primary/30 flex items-center gap-4">
+                    <img
+                      src={embeddedCoverUrl}
+                      alt="Extracted Artwork"
+                      className="w-14 h-14 rounded-lg object-cover border border-white/20 shadow-lg flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useEmbeddedCover}
+                          onChange={(e) => setUseEmbeddedCover(e.target.checked)}
+                          className="rounded border-white/20 text-primary focus:ring-primary w-4 h-4 cursor-pointer accent-purple-400"
+                        />
+                        <span className="text-xs font-semibold text-white">Use cover from audio metadata</span>
+                      </label>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Extracted native ID3 album art will be stored in GridFS and bound to this track.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {(!embeddedCoverUrl || !useEmbeddedCover) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                        Upload Custom Cover Art
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setCustomCoverFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-white/10 file:text-white hover:file:bg-white/20 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Or Cover URL</label>
+                      <input
+                        type="text"
+                        value={uploadCover}
+                        onChange={(e) => setUploadCover(e.target.value)}
+                        placeholder="/covers/sunflower.png"
+                        className="w-full rounded-xl border border-white/10 bg-black/50 px-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Duration</label>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Duration (MM:SS)</label>
                     <input
                       type="text"
                       value={uploadDuration}
@@ -375,30 +500,12 @@ export default function AdminCatalog() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Cover Art URL</label>
-                    <input
-                      type="text"
-                      value={uploadCover}
-                      onChange={(e) => setUploadCover(e.target.value)}
-                      placeholder="/covers/sunflower.png"
-                      className="w-full rounded-xl border border-white/10 bg-black/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-primary"
-                    />
+                    <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Storage Mode</label>
+                    <div className="px-4 py-2.5 rounded-xl border border-white/10 bg-black/30 text-xs font-mono text-emerald-400 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                      <span>MongoDB GridFS Master</span>
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
-                    Audio File (MP3, FLAC, WAV, AAC)
-                  </label>
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
-                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-black hover:file:brightness-110 cursor-pointer"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    If no file is selected, track will map to high-speed edge CDN storage.
-                  </p>
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">

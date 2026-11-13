@@ -25,7 +25,8 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   await listenerPage.fill('input[type="email"]', 'listener@riveria.com');
   await listenerPage.fill('input[type="password"]', 'RiveriaListener2026!');
   await listenerPage.click('button:has-text("Authenticate")');
-  await listenerPage.waitForTimeout(2000);
+  await listenerPage.waitForTimeout(2500);
+  console.log('Listener URL after auth:', listenerPage.url());
 
   // Check Sidebar tabs for listener
   const listenerNavText = await listenerPage.evaluate(() => {

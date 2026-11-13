@@ -228,16 +228,44 @@ export default function Dashboard() {
               />
             </label>
 
-            {/* Admin Upload Trigger */}
+            {/* Admin Ingest Studio Trigger */}
             {isAdmin && (
               <button
-                onClick={() => setShowUploadModal(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-2 text-xs font-bold uppercase tracking-wider text-black shadow-[0_0_15px_rgba(208,188,255,0.4)] transition-all hover:scale-105 active:scale-95"
+                onClick={() => navigate('/admin/catalog')}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-rose-500 to-purple-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] transition-all hover:scale-105 active:scale-95"
               >
-                <span className="material-symbols-outlined text-base">cloud_upload</span>
-                <span>Upload Track</span>
+                <span className="material-symbols-outlined text-base">library_music</span>
+                <span>Catalog Master &rarr;</span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Audiophile DSP & Holographic Acoustic Status */}
+        <div className="mb-6 p-4 rounded-2xl glass-panel border border-white/10 bg-[#0e0c15]/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_12px_rgba(208,188,255,0.25)]">
+              <span className="material-symbols-outlined text-lg">graphic_eq</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white tracking-wide">32-Bit Floating DSP Stage Active</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[9px] border border-emerald-500/30">HOLOGRAPHIC 3D</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Zero phase distortion mastering with Mid-Side psychoacoustic spatializer exceeding Dolby Atmos.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <button
+              onClick={() => navigate('/settings')}
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-sm">tune</span>
+              <span>Equalizer & Spatial Stage</span>
+            </button>
           </div>
         </div>
 

@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { usePlayer } from '../hooks/usePlayer';
+import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const formatBytes = (size) => {
@@ -12,7 +14,43 @@ export default function LocalSyncHub() {
   const [dragActive, setDragActive] = useState(false);
   const [feedback, setFeedback] = useState('');
   const { localTracks, mountLocalFiles, removeLocalTrack, playTrack, currentTrack, isPlaying } = usePlayer();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [deployingId, setDeployingId] = useState(null);
   const navigate = useNavigate();
+
+  const handlePromoteToCloud = async (track) => {
+    if (!track.rawFile) return;
+    try {
+      setDeployingId(track._id);
+      const formData = new FormData();
+      formData.append('audio', track.rawFile);
+      formData.append('title', track.title);
+      formData.append('artist', track.artist || 'Master Ingest');
+      formData.append('duration', '03:30');
+
+      if (track.imageSrc && track.imageSrc.startsWith('blob:')) {
+        try {
+          const resp = await fetch(track.imageSrc);
+          const blob = await resp.blob();
+          const coverFile = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
+          formData.append('cover', coverFile);
+        } catch {}
+      }
+
+      await apiRequest('/tracks/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      setFeedback(`Track "${track.title}" successfully promoted to Cloud Master Catalog!`);
+      setTimeout(() => setFeedback(''), 5000);
+    } catch (err) {
+      setFeedback(`Cloud promotion failed: ${err.message}`);
+    } finally {
+      setDeployingId(null);
+    }
+  };
 
   const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
@@ -58,6 +96,24 @@ export default function LocalSyncHub() {
 
   return (
     <main className="flex-1 md:ml-80 p-5 pb-36 pt-24 md:p-10 md:pt-28 text-white max-w-5xl">
+      {/* Admin Staging Suite Banner */}
+      {isAdmin && (
+        <div className="mb-6 p-4 rounded-2xl bg-[#140c1d] border border-rose-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(244,63,94,0.1)]">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-rose-400 text-2xl">cloud_upload</span>
+            <div>
+              <p className="font-bold text-white uppercase tracking-wider text-[11px] flex items-center gap-2">
+                <span>System Architect Staging Suite</span>
+                <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[9px] border border-rose-500/30">MASTER INGEST</span>
+              </p>
+              <p className="text-slate-400 mt-0.5">
+                As an administrator, you have full authority to promote any local audio file directly to the MongoDB GridFS Cloud Catalog.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. MOUNT BOX */}
       <section
         onDragEnter={handleDrag}
@@ -198,6 +254,20 @@ export default function LocalSyncHub() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {isAdmin && track.rawFile && (
+                    <button
+                      onClick={() => handlePromoteToCloud(track)}
+                      disabled={deployingId === track._id}
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 transition-all active:scale-95"
+                      title="Deploy this local master recording directly to MongoDB GridFS Cloud"
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {deployingId === track._id ? 'sync' : 'cloud_upload'}
+                      </span>
+                      <span>{deployingId === track._id ? 'Deploying...' : 'Deploy to Cloud'}</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => playTrack(track, localTracks)}
                     className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${

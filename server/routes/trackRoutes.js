@@ -17,13 +17,22 @@ const upload = multer({
     destination: (_, __, callback) => callback(null, uploadDirectory),
     filename: (_, file, callback) => callback(null, `${Date.now()}-${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`)
   }),
-  limits: { fileSize: env.MAX_UPLOAD_SIZE_BYTES, files: 1 },
-  fileFilter: (_, file, callback) => callback(null, /^(audio\/(mpeg|wav|ogg|aac|mp4|webm)|video\/mp4)$/i.test(file.mimetype))
+  limits: { fileSize: env.MAX_UPLOAD_SIZE_BYTES, files: 2 },
+  fileFilter: (_, file, callback) => {
+    if (file.fieldname === 'audio') {
+      return callback(null, /^(audio\/(mpeg|wav|ogg|aac|mp4|webm|flac|x-flac)|video\/mp4)$/i.test(file.mimetype) || /\.(mp3|wav|ogg|aac|m4a|flac|webm)$/i.test(file.originalname));
+    }
+    if (file.fieldname === 'cover') {
+      return callback(null, /^image\/(jpeg|png|webp|gif|svg\+xml)$/i.test(file.mimetype) || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.originalname));
+    }
+    callback(null, true);
+  }
 });
 
 router.get('/', trackController.getAllTracks);
 router.post('/', protect, adminOnly, validate(createTrackSchema), trackController.createTrack);
-router.post('/upload', protect, adminOnly, upload.single('audio'), validate(uploadTrackSchema), trackController.uploadAudio);
+router.post('/upload', protect, adminOnly, upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'cover', maxCount: 1 }]), validate(uploadTrackSchema), trackController.uploadAudio);
+router.get('/:id/cover', trackController.getTrackCover);
 router.get('/:id/stream', validate(trackIdSchema), trackController.streamAudio);
 router.head('/:id/stream', validate(trackIdSchema), trackController.streamAudio);
 router.get('/:id', validate(trackIdSchema), trackController.getTrackById);

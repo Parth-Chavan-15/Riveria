@@ -61,6 +61,10 @@ exports.deleteTrack = async (req, res, next) => {
       const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'audio_library' });
       await bucket.delete(deletedTrack.gridFsId).catch(() => {});
     }
+    if (deletedTrack.coverGridFsId && mongoose.connection.db) {
+      const imgBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'image_library' });
+      await imgBucket.delete(deletedTrack.coverGridFsId).catch(() => {});
+    }
     if (deletedTrack.audioFile?.filename) await fs.promises.unlink(path.join(uploadsDirectory, deletedTrack.audioFile.filename)).catch(() => {});
     emitTrackEvent(req, 'deleted', deletedTrack);
     res.status(204).end();
@@ -68,13 +72,17 @@ exports.deleteTrack = async (req, res, next) => {
 };
 
 exports.uploadAudio = async (req, res, next) => {
+  const audioFile = req.files?.audio?.[0] || req.file;
+  const coverFile = req.files?.cover?.[0];
+
   try {
-    if (!req.file) return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'An audio file is required' } });
+    if (!audioFile) return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'An audio file is required' } });
 
     // Validate true audio file signature to prevent MIME spoofing
-    const signatureCheck = await validateAudioSignature(req.file.path);
+    const signatureCheck = await validateAudioSignature(audioFile.path);
     if (!signatureCheck.valid) {
-      await fs.promises.unlink(req.file.path).catch(() => {});
+      await fs.promises.unlink(audioFile.path).catch(() => {});
+      if (coverFile) await fs.promises.unlink(coverFile.path).catch(() => {});
       return res.status(422).json({
         error: {
           code: 'INVALID_AUDIO_SIGNATURE',
@@ -84,31 +92,80 @@ exports.uploadAudio = async (req, res, next) => {
     }
 
     let gridFsId = null;
+    let coverGridFsId = null;
+
     if (mongoose.connection.db) {
+      // 1. Upload audio stream to MongoDB GridFS
       const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'audio_library' });
-      const uploadStream = bucket.openUploadStream(req.file.filename, {
-        contentType: req.file.mimetype,
+      const uploadStream = bucket.openUploadStream(audioFile.filename, {
+        contentType: audioFile.mimetype,
         metadata: { title: req.body.title, artist: req.body.artist }
       });
       await new Promise((resolve, reject) => {
-        fs.createReadStream(req.file.path)
+        fs.createReadStream(audioFile.path)
           .pipe(uploadStream)
           .on('finish', resolve)
           .on('error', reject);
       });
       gridFsId = uploadStream.id;
+
+      // 2. Upload cover art if provided
+      if (coverFile) {
+        const imageBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'image_library' });
+        const imgStream = imageBucket.openUploadStream(coverFile.filename, {
+          contentType: coverFile.mimetype
+        });
+        await new Promise((resolve, reject) => {
+          fs.createReadStream(coverFile.path)
+            .pipe(imgStream)
+            .on('finish', resolve)
+            .on('error', reject);
+        });
+        coverGridFsId = imgStream.id;
+      }
     }
 
+    const trackId = new mongoose.Types.ObjectId();
+    const finalImageSrc = coverGridFsId
+      ? `/api/tracks/${trackId}/cover`
+      : (req.body.imageSrc || '/covers/sunflower.png');
+
     const track = await Track.create({
+      _id: trackId,
       ...req.body,
+      imageSrc: finalImageSrc,
       type: 'Upload',
       gridFsId,
-      audioFile: { filename: req.file.filename, mimeType: req.file.mimetype, size: req.file.size }
+      coverGridFsId,
+      coverMimeType: coverFile ? coverFile.mimetype : 'image/jpeg',
+      audioFile: { filename: audioFile.filename, mimeType: audioFile.mimetype, size: audioFile.size }
     });
     emitTrackEvent(req, 'created', track);
     res.status(201).json({ track });
   } catch (error) {
-    if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+    if (audioFile) await fs.promises.unlink(audioFile.path).catch(() => {});
+    if (coverFile) await fs.promises.unlink(coverFile.path).catch(() => {});
+    next(error);
+  }
+};
+
+exports.getTrackCover = async (req, res, next) => {
+  try {
+    const track = await Track.findById(req.params.id);
+    if (!track) return res.status(404).end();
+
+    if (track.coverGridFsId && mongoose.connection.db) {
+      const imageBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'image_library' });
+      res.setHeader('Content-Type', track.coverMimeType || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return imageBucket.openDownloadStream(track.coverGridFsId).on('error', () => res.status(404).end()).pipe(res);
+    }
+
+    if (track.imageSrc) {
+      return res.redirect(track.imageSrc);
+    }
+    return res.status(404).end();
+  } catch (error) {
     next(error);
   }
 };

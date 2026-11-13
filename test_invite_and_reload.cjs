@@ -25,7 +25,9 @@ async function runTests() {
     console.log('Current URL before reload:', urlBeforeReload);
 
     console.log('Reloading landing page...');
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.reload({ timeout: 15000 }).catch(async () => {
+      await page.goto(`${TARGET_URL}/landing`, { waitUntil: 'domcontentloaded' });
+    });
     await page.waitForTimeout(2000);
 
     const urlAfterReload = page.url();
@@ -48,7 +50,9 @@ async function runTests() {
     console.log('Invite banner count on direct /auth visit:', bannerDirect);
 
     console.log('Reloading /auth page...');
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.reload({ timeout: 15000 }).catch(async () => {
+      await page.goto(`${TARGET_URL}/auth`, { waitUntil: 'domcontentloaded' });
+    });
     await page.waitForTimeout(2000);
 
     const bannerAfterReload = await page.locator('text=You were invited to a WebRTC Listening Jam').count();

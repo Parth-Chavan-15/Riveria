@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { usePlayer } from '../hooks/usePlayer';
 import { useAuth } from '../hooks/useAuth';
 import { apiRequest } from '../services/api';
+import { uploadMasterTrack } from '../services/catalogUploader';
 import { useNavigate } from 'react-router-dom';
 
 const formatBytes = (size) => {
@@ -23,24 +24,22 @@ export default function LocalSyncHub() {
     if (!track.rawFile) return;
     try {
       setDeployingId(track._id);
-      const formData = new FormData();
-      formData.append('audio', track.rawFile);
-      formData.append('title', track.title);
-      formData.append('artist', track.artist || 'Master Ingest');
-      formData.append('duration', '03:30');
-
+      let coverBlobOrFile = null;
       if (track.imageSrc && track.imageSrc.startsWith('blob:')) {
         try {
           const resp = await fetch(track.imageSrc);
-          const blob = await resp.blob();
-          const coverFile = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
-          formData.append('cover', coverFile);
+          coverBlobOrFile = await resp.blob();
         } catch {}
       }
 
-      await apiRequest('/tracks/upload', {
-        method: 'POST',
-        body: formData
+      await uploadMasterTrack({
+        audioFile: track.rawFile,
+        title: track.title,
+        artist: track.artist || 'Master Ingest',
+        duration: track.duration || '03:30',
+        imageSrc: track.imageSrc && !track.imageSrc.startsWith('blob:') ? track.imageSrc : '/covers/sunflower.png',
+        coverBlobOrFile,
+        onProgress: (p) => setFeedback(`Deploying "${track.title}" to GridFS: ${p.stage}`)
       });
 
       setFeedback(`Track "${track.title}" successfully promoted to Cloud Master Catalog!`);

@@ -13,6 +13,22 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   page.on('pageerror', (err) => console.error('PAGE ERROR:', err.message));
+  page.on('console', msg => console.log('BROWSER CONSOLE:', msg.text()));
+  page.on('dialog', async dialog => {
+    console.log('BROWSER DIALOG:', dialog.type(), dialog.message());
+    await dialog.accept();
+  });
+  page.on('response', async res => {
+    if (res.url().includes('/api/')) {
+      console.log('API RESP:', res.status(), res.url());
+      if (res.status() >= 400) {
+        try {
+          const body = await res.text();
+          console.log('ERROR BODY:', body.slice(0, 300));
+        } catch {}
+      }
+    }
+  });
 
   try {
     // 1. Authenticate as Admin
@@ -70,7 +86,8 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
     await page.click('button:has-text("Upload & Deploy")');
 
     // Wait for upload & GridFS ingestion to complete
-    await page.waitForTimeout(4000);
+    await page.waitForSelector('text=successfully deployed to MongoDB GridFS', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(1000);
 
     // 7. Verify track in catalog
     const noticeText = await page.evaluate(() => document.body.innerText);
@@ -109,10 +126,6 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
 
     // 9. Clean up: Delete the test track
     console.log(`Cleaning up test track: "${editedTitle}"...`);
-    page.on('dialog', async (dialog) => {
-      console.log('Confirming deletion dialog...');
-      await dialog.accept();
-    });
     const deleteBtn = page.locator(`tr:has-text("${editedTitle}") button:has-text("delete")`);
     await deleteBtn.click();
     await page.waitForTimeout(2000);

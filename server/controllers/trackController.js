@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Track = require('../models/Track');
 const env = require('../config/env');
-const { validateAudioSignature } = require('../utils/audioValidator');
+const { validateAudioSignature, validateAudioBufferSignature } = require('../utils/audioValidator');
 
 const uploadsDirectory = path.resolve(__dirname, '..', env.UPLOAD_DIR);
 
@@ -145,6 +146,187 @@ exports.uploadAudio = async (req, res, next) => {
   } catch (error) {
     if (audioFile) await fs.promises.unlink(audioFile.path).catch(() => {});
     if (coverFile) await fs.promises.unlink(coverFile.path).catch(() => {});
+    next(error);
+  }
+};
+
+exports.initChunkedUpload = async (req, res, next) => {
+  try {
+    const { title, artist, duration, fileName, fileSize, mimeType, totalChunks, imageSrc, coverBase64 } = req.body;
+    if (!title || !artist || !fileName || !totalChunks) {
+      return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'Missing required metadata for chunked upload' } });
+    }
+
+    const uploadId = crypto.randomUUID();
+    const db = mongoose.connection.db;
+    if (!db) {
+      return res.status(500).json({ error: { code: 'DB_UNAVAILABLE', message: 'Database connection unavailable' } });
+    }
+
+    const sessionCol = db.collection('upload_sessions');
+    await sessionCol.insertOne({
+      uploadId,
+      title: title.trim(),
+      artist: artist.trim(),
+      duration: duration || '03:30',
+      fileName: fileName.trim(),
+      fileSize: Number(fileSize),
+      mimeType: mimeType || 'audio/mpeg',
+      totalChunks: Number(totalChunks),
+      imageSrc: imageSrc || null,
+      coverBase64: coverBase64 || null,
+      createdAt: new Date()
+    });
+
+    res.status(200).json({ uploadId, message: 'Upload session initialized' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.uploadChunk = async (req, res, next) => {
+  try {
+    const { uploadId, chunkIndex } = req.body;
+    if (!uploadId || chunkIndex === undefined || !req.file) {
+      return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'uploadId, chunkIndex, and chunk file are required' } });
+    }
+
+    const db = mongoose.connection.db;
+    if (!db) {
+      return res.status(500).json({ error: { code: 'DB_UNAVAILABLE', message: 'Database connection unavailable' } });
+    }
+
+    const chunksCol = db.collection('upload_chunks');
+    await chunksCol.updateOne(
+      { uploadId, chunkIndex: Number(chunkIndex) },
+      { $set: { uploadId, chunkIndex: Number(chunkIndex), data: req.file.buffer, createdAt: new Date() } },
+      { upsert: true }
+    );
+
+    res.status(200).json({ success: true, chunkIndex: Number(chunkIndex) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.finalizeChunkedUpload = async (req, res, next) => {
+  try {
+    const { uploadId } = req.body;
+    if (!uploadId) {
+      return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'uploadId is required' } });
+    }
+
+    const db = mongoose.connection.db;
+    if (!db) {
+      return res.status(500).json({ error: { code: 'DB_UNAVAILABLE', message: 'Database connection unavailable' } });
+    }
+
+    const sessionCol = db.collection('upload_sessions');
+    const chunksCol = db.collection('upload_chunks');
+
+    const session = await sessionCol.findOne({ uploadId });
+    if (!session) {
+      return res.status(404).json({ error: { code: 'SESSION_NOT_FOUND', message: 'Upload session expired or not found' } });
+    }
+
+    const chunks = await chunksCol.find({ uploadId }).sort({ chunkIndex: 1 }).toArray();
+    if (chunks.length < session.totalChunks) {
+      return res.status(400).json({
+        error: {
+          code: 'INCOMPLETE_CHUNKS',
+          message: `Expected ${session.totalChunks} chunks but received ${chunks.length}`
+        }
+      });
+    }
+
+    // Assemble complete audio buffer
+    const bufferList = chunks.map(c => Buffer.isBuffer(c.data) ? c.data : (c.data?.buffer ? Buffer.from(c.data.buffer) : Buffer.from(c.data)));
+    const fullAudioBuffer = Buffer.concat(bufferList);
+
+    // Validate signature
+    const signatureCheck = validateAudioBufferSignature(fullAudioBuffer);
+    if (!signatureCheck.valid) {
+      await chunksCol.deleteMany({ uploadId }).catch(() => {});
+      await sessionCol.deleteOne({ uploadId }).catch(() => {});
+      return res.status(422).json({
+        error: {
+          code: 'INVALID_AUDIO_SIGNATURE',
+          message: 'The uploaded file does not match a verified audio format signature'
+        }
+      });
+    }
+
+    // Write to GridFS audio_library
+    const audioBucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'audio_library' });
+    const cleanFilename = `${Date.now()}-${session.fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const uploadStream = audioBucket.openUploadStream(cleanFilename, {
+      contentType: session.mimeType || 'audio/mpeg',
+      metadata: { title: session.title, artist: session.artist }
+    });
+
+    await new Promise((resolve, reject) => {
+      uploadStream.end(fullAudioBuffer, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    const gridFsId = uploadStream.id;
+
+    // Handle cover art if provided
+    let coverGridFsId = null;
+    let coverMimeType = 'image/jpeg';
+    if (session.coverBase64) {
+      const match = session.coverBase64.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        coverMimeType = match[1];
+        const coverBuf = Buffer.from(match[2], 'base64');
+        const imgBucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'image_library' });
+        const imgStream = imgBucket.openUploadStream(`${Date.now()}-cover.jpg`, { contentType: coverMimeType });
+        await new Promise((resolve, reject) => {
+          imgStream.end(coverBuf, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+        coverGridFsId = imgStream.id;
+      }
+    }
+
+    const trackId = new mongoose.Types.ObjectId();
+    const finalImageSrc = coverGridFsId
+      ? `/api/tracks/${trackId}/cover`
+      : (session.imageSrc || '/covers/sunflower.png');
+
+    const track = await Track.create({
+      _id: trackId,
+      title: session.title,
+      artist: session.artist,
+      duration: session.duration || '03:30',
+      imageSrc: finalImageSrc,
+      type: 'Upload',
+      gridFsId,
+      coverGridFsId,
+      coverMimeType,
+      audioFile: {
+        filename: cleanFilename,
+        mimeType: session.mimeType || 'audio/mpeg',
+        size: fullAudioBuffer.length
+      }
+    });
+
+    // Seed ultra-fast in-memory cache
+    audioCache.set(String(trackId), {
+      buffer: fullAudioBuffer,
+      contentType: session.mimeType || 'audio/mpeg'
+    });
+
+    // Cleanup session and chunks
+    await chunksCol.deleteMany({ uploadId }).catch(() => {});
+    await sessionCol.deleteOne({ uploadId }).catch(() => {});
+
+    emitTrackEvent(req, 'created', track);
+    res.status(201).json({ track });
+  } catch (error) {
     next(error);
   }
 };

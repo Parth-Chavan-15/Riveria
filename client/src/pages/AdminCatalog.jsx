@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../services/api';
 import { usePlayer } from '../hooks/usePlayer';
 import { extractAudioMetadata } from '../utils/audioMetadata';
+import { uploadMasterTrack } from '../services/catalogUploader';
 
 export default function AdminCatalog() {
   const { playTrack, currentTrack, isPlaying } = usePlayer();
@@ -22,6 +23,7 @@ export default function AdminCatalog() {
   const [useEmbeddedCover, setUseEmbeddedCover] = useState(true);
   const [customCoverFile, setCustomCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // Edit Modal State
   const [editingTrack, setEditingTrack] = useState(null);
@@ -94,32 +96,27 @@ export default function AdminCatalog() {
 
     try {
       setIsUploading(true);
-      if (audioFile) {
-        // Multipart GridFS upload
-        const formData = new FormData();
-        formData.append('audio', audioFile);
-        formData.append('title', uploadTitle.trim());
-        formData.append('artist', uploadArtist.trim());
-        formData.append('duration', uploadDuration.trim() || '03:30');
+      setUploadProgress({ current: 0, total: 1, percent: 10, stage: 'Preparing track master...' });
 
+      if (audioFile) {
+        let coverBlobOrFile = null;
         if (useEmbeddedCover && embeddedCoverUrl) {
           try {
             const resp = await fetch(embeddedCoverUrl);
-            const blob = await resp.blob();
-            const coverFile = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
-            formData.append('cover', coverFile);
-          } catch {
-            formData.append('imageSrc', uploadCover.trim() || '/covers/sunflower.png');
-          }
+            coverBlobOrFile = await resp.blob();
+          } catch {}
         } else if (customCoverFile) {
-          formData.append('cover', customCoverFile);
-        } else {
-          formData.append('imageSrc', uploadCover.trim() || '/covers/sunflower.png');
+          coverBlobOrFile = customCoverFile;
         }
 
-        await apiRequest('/tracks/upload', {
-          method: 'POST',
-          body: formData,
+        await uploadMasterTrack({
+          audioFile,
+          title: uploadTitle.trim(),
+          artist: uploadArtist.trim(),
+          duration: uploadDuration.trim() || '03:30',
+          imageSrc: uploadCover.trim() || '/covers/sunflower.png',
+          coverBlobOrFile,
+          onProgress: (p) => setUploadProgress(p)
         });
       } else {
         // Direct JSON track registration
@@ -144,12 +141,14 @@ export default function AdminCatalog() {
       setEmbeddedCoverUrl(null);
       setUseEmbeddedCover(true);
       setCustomCoverFile(null);
+      setUploadProgress(null);
       fetchTracks();
       setTimeout(() => setNotice(''), 4000);
     } catch (err) {
       alert(`Upload error: ${err.message}`);
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -507,6 +506,21 @@ export default function AdminCatalog() {
                     </div>
                   </div>
                 </div>
+
+                {isUploading && uploadProgress && (
+                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 font-medium">{uploadProgress.stage}</span>
+                      <span className="font-mono font-bold text-primary">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-primary to-secondary h-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
                   <button

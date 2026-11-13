@@ -32,6 +32,15 @@ const upload = multer({
 router.get('/', trackController.getAllTracks);
 router.post('/', protect, adminOnly, validate(createTrackSchema), trackController.createTrack);
 router.post('/upload', protect, adminOnly, upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'cover', maxCount: 1 }]), validate(uploadTrackSchema), trackController.uploadAudio);
+
+const chunkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 }
+});
+router.post('/upload/chunk-init', protect, adminOnly, trackController.initChunkedUpload);
+router.post('/upload/chunk', protect, adminOnly, chunkUpload.single('chunk'), trackController.uploadChunk);
+router.post('/upload/chunk-finalize', protect, adminOnly, trackController.finalizeChunkedUpload);
+
 router.get('/:id/cover', trackController.getTrackCover);
 router.get('/:id/stream', validate(trackIdSchema), trackController.streamAudio);
 router.head('/:id/stream', validate(trackIdSchema), trackController.streamAudio);

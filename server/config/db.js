@@ -6,11 +6,11 @@ if (!cached) {
 }
 
 const connectDB = async () => {
-  if (cached.conn && mongoose.connection.readyState === 1) {
-    return cached.conn;
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
   }
 
-  if (!cached.promise) {
+  if (!cached.promise || mongoose.connection.readyState === 0) {
     const opts = {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
@@ -33,7 +33,15 @@ const connectDB = async () => {
   }
 };
 
-mongoose.connection.on('disconnected', () => console.warn('MongoDB disconnected'));
-mongoose.connection.on('error', (error) => console.error(`MongoDB connection error: ${error.message}`));
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected');
+  cached.conn = null;
+  cached.promise = null;
+});
+mongoose.connection.on('error', (error) => {
+  console.error(`MongoDB connection error: ${error.message}`);
+  cached.conn = null;
+  cached.promise = null;
+});
 
 module.exports = connectDB;

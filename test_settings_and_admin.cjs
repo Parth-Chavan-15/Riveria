@@ -146,6 +146,7 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   // Test 3: Save Preferences
   console.log('Testing Save Preferences...');
   const saveBtn = listenerPage.locator('button:has-text("Save Preferences")');
+  await saveBtn.scrollIntoViewIfNeeded();
   await saveBtn.click();
   await listenerPage.waitForTimeout(1000);
   const saveFeedback = await listenerPage.locator('text=Preferences synchronized and saved').count();
@@ -172,7 +173,10 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   await adminPage.goto(`${TARGET_URL}/auth`, { waitUntil: 'networkidle' });
   await adminPage.fill('input[type="email"]', 'admin@riveria.com');
   await adminPage.fill('input[type="password"]', 'RiveriaAdmin2026!');
-  await adminPage.click('button:has-text("Authenticate")');
+  await Promise.all([
+    adminPage.waitForResponse(res => res.url().includes('/api/auth/login') && res.status() === 200),
+    adminPage.click('button:has-text("Authenticate")')
+  ]);
   await adminPage.waitForTimeout(2000);
 
   // Check Sidebar tabs for Admin
@@ -252,7 +256,7 @@ const TARGET_URL = process.env.TARGET_URL || 'http://localhost:8088';
   // Test 7: User Governance (/admin/users)
   console.log('\nTesting User Governance (/admin/users)...');
   await adminPage.goto(`${TARGET_URL}/admin/users`, { waitUntil: 'domcontentloaded' });
-  await adminPage.waitForTimeout(1500);
+  await adminPage.waitForSelector('tbody tr', { timeout: 10000 });
 
   const userStats = await adminPage.evaluate(() => {
     const text = document.body.innerText.toUpperCase();

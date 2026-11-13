@@ -324,20 +324,17 @@ export function JamProvider({ children }) {
         }
       });
 
-      const CHUNK_SIZE = 32768; // 32KB high-speed chunks
+      const CHUNK_SIZE = 65536; // 64KB high-speed SCTP chunks
       for (let offset = 0; offset < buffer.byteLength; offset += CHUNK_SIZE) {
         const slice = buffer.slice(offset, offset + CHUNK_SIZE);
         for (const { channel } of peersRef.current.values()) {
           if (channel?.readyState === 'open') {
-            // Flow control: wait if channel send buffer is backlogged (> 128KB)
-            while (channel.bufferedAmount > 131072) {
-              await new Promise((r) => setTimeout(r, 10));
+            // Flow control: wait if channel send buffer is backlogged (> 256KB)
+            while (channel.bufferedAmount > 262144) {
+              await new Promise((r) => setTimeout(r, 5));
             }
             try { channel.send(slice); } catch {}
           }
-        }
-        if (offset % (CHUNK_SIZE * 8) === 0) {
-          await new Promise((r) => setTimeout(r, 2));
         }
       }
 

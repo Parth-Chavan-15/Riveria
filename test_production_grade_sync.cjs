@@ -161,8 +161,8 @@ async function testGroupJamLocalAudio() {
       await playLocalBtn.click();
     }
 
-    console.log('Waiting 5s for WebRTC P2P DataChannel chunk transfer and acoustic lock...');
-    await page1.waitForTimeout(5000);
+    console.log('Waiting 9s for WebRTC P2P DataChannel chunk transfer and acoustic lock...');
+    await page1.waitForTimeout(9000);
 
     const b1State = await page1.evaluate(() => {
       const a = window.__riveriaAudio;

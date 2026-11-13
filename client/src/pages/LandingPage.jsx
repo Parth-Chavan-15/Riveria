@@ -360,6 +360,9 @@ export default function LandingPage() {
       attachWatchdog(heroAudio, heroTrack);
       audioPoolRef.current.set(heroTrack._id, heroAudio);
       activeAudioRef.current = heroAudio;
+      if (typeof window !== 'undefined') {
+        window.__landingAudio = heroAudio;
+      }
       audioCoordinator.register(heroAudio);
     }
 
@@ -444,6 +447,7 @@ export default function LandingPage() {
 
         // Step 2: Switch references once prior audio has stopped
         activeAudioRef.current = nextAudioElem;
+        if (typeof window !== 'undefined') window.__landingAudio = nextAudioElem;
         setCurrentTrackIndex(idx);
 
         // Setup time updates
@@ -474,6 +478,7 @@ export default function LandingPage() {
         silenceAllExcept(nextAudioElem);
 
         activeAudioRef.current = nextAudioElem;
+        if (typeof window !== 'undefined') window.__landingAudio = nextAudioElem;
         setCurrentTrackIndex(idx);
 
         nextAudioElem.ontimeupdate = () => {

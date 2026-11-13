@@ -107,10 +107,14 @@ export default function TopBar({ onToggleMobileMenu = () => {} }) {
 
         {/* Role-Based UI Element */}
         {user?.role === 'admin' ? (
-          <span className="inline-flex items-center gap-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(244,63,94,0.25)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-            Admin
-          </span>
+          <Link
+            to="/admin"
+            className="inline-flex items-center gap-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(244,63,94,0.25)] hover:bg-rose-500/25 transition-all group"
+            title="Open Master System Architect Console"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 group-hover:animate-ping"></span>
+            <span>Architect Console</span>
+          </Link>
         ) : (
           <span className="hidden sm:inline-flex items-center gap-1.5 bg-violet-500/15 text-violet-300 border border-violet-500/30 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide">
             Listener

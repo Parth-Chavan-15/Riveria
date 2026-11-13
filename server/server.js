@@ -11,6 +11,7 @@ const connectDB = require('./config/db');
 const trackRoutes = require('./routes/trackRoutes');
 const authRoutes = require('./routes/authRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 const { attachWebRtcHandlers } = require('./sockets/webrtcHandler');
 const User = require('./models/User');
@@ -78,6 +79,7 @@ app.get('/health', (req, res) => {
 app.use('/api/tracks', trackRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/session', sessionRoutes);
+app.use('/api/admin', adminRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

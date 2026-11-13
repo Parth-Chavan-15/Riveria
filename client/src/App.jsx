@@ -13,6 +13,9 @@ import LocalSyncHub from './pages/LocalSyncHub';
 import WebRTCSession from './pages/WebRTCSession';
 import LandingPage from './pages/LandingPage';
 import Settings from './pages/Settings';
+import AdminConsole from './pages/AdminConsole';
+import AdminCatalog from './pages/AdminCatalog';
+import AdminUsers from './pages/AdminUsers';
 
 // Protected Route Wrapper with return URL redirection
 const ProtectedRoute = ({ children }) => {
@@ -25,6 +28,21 @@ const ProtectedRoute = ({ children }) => {
     const inviteFlag = isInvite ? '&invite=true' : '';
     return <Navigate to={`/auth?redirect=${returnUrl}${inviteFlag}`} replace />;
   }
+  return children;
+};
+
+// Admin Route Wrapper: restricts access exclusively to System Architects
+const AdminRoute = ({ children }) => {
+  const { user, token, isLoading } = useAuth();
+  if (!token) return <Navigate to="/auth" replace />;
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-screen text-slate-400">
+        <span className="material-symbols-outlined text-4xl animate-spin text-primary">sync</span>
+      </div>
+    );
+  }
+  if (!user || user.role !== 'admin') return <Navigate to="/" replace />;
   return children;
 };
 
@@ -60,6 +78,9 @@ function AppContent() {
             <Route path="/sync" element={<ProtectedRoute><LocalSyncHub /></ProtectedRoute>} />
             <Route path="/session" element={<ProtectedRoute><WebRTCSession /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminRoute><AdminConsole /></AdminRoute>} />
+            <Route path="/admin/catalog" element={<AdminRoute><AdminCatalog /></AdminRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
           <BottomPlayer />

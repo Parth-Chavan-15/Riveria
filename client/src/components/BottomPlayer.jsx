@@ -27,7 +27,8 @@ export default function BottomPlayer() {
     isMuted,
     toggleMute,
     error,
-    isAutoplayBlocked
+    isAutoplayBlocked,
+    isAndroid
   } = usePlayer();
 
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -200,11 +201,30 @@ export default function BottomPlayer() {
 
       {/* 3. RIGHT SECTION: Volume & Fidelity Controls */}
       <div className="hidden sm:flex items-center justify-end gap-3 md:gap-4 w-1/4 min-w-[140px] max-w-[280px] text-slate-400">
-        {/* Quality Pill */}
+        {/* Quality & Hardware Concurrency Pill */}
         <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
           <span>Lossless FLAC</span>
         </div>
+
+        {/* Hardware Stream Concurrency Mode (Android single-stream vs PC parallel play) */}
+        {isAndroid ? (
+          <div
+            title="Android Audio Policy: Android hardware only supports a single active audio stream at a time. Multi-room/multi-tab parallel playback is fully supported on Desktop PCs."
+            className="hidden xl:flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[9px] font-mono text-amber-300 cursor-help"
+          >
+            <span className="material-symbols-outlined text-[11px]">phone_android</span>
+            <span>Single-Stream (Android)</span>
+          </div>
+        ) : (
+          <div
+            title="Desktop Audio Pipeline: Multi-mesh and multi-tab parallel audio playback fully supported with native hardware mixing."
+            className="hidden xl:flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/30 text-[9px] font-mono text-primary cursor-help"
+          >
+            <span className="material-symbols-outlined text-[11px]">desktop_windows</span>
+            <span>Parallel Play (PC)</span>
+          </div>
+        )}
 
         {/* Volume Slider & Mute Toggle */}
         <div className="flex items-center gap-2 relative">

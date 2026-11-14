@@ -2,7 +2,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 function readStoredToken() {
   try {
-    return localStorage.getItem('riveria_access_token') || sessionStorage.getItem('riveria_access_token');
+    // Check sessionStorage first for strict per-tab account isolation
+    return sessionStorage.getItem('riveria_access_token') || localStorage.getItem('riveria_access_token');
   } catch {
     return null;
   }

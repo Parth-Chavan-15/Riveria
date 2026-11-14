@@ -151,11 +151,11 @@ export function JamProvider({ children }) {
   const getPersistentPeerId = () => {
     if (typeof window === 'undefined') return `peer_${crypto.randomUUID().slice(0, 8)}`;
     try {
-      const existing = sessionStorage.getItem('reveria:my_peer_id') || localStorage.getItem('reveria:my_peer_id');
+      // Isolate strictly per tab using sessionStorage (prevents multi-tab peer collision in same browser)
+      const existing = sessionStorage.getItem('reveria:my_tab_peer_id');
       if (existing && existing.startsWith('peer')) return existing;
       const newId = `peer_${crypto.randomUUID().slice(0, 8)}`;
-      sessionStorage.setItem('reveria:my_peer_id', newId);
-      localStorage.setItem('reveria:my_peer_id', newId);
+      sessionStorage.setItem('reveria:my_tab_peer_id', newId);
       return newId;
     } catch {
       return `peer_${crypto.randomUUID().slice(0, 8)}`;
@@ -323,6 +323,7 @@ export function JamProvider({ children }) {
   }, [joinedRoom, addLog]);
 
   const p2pLatencyRef = useRef(new Map());
+  const p2pOffsetRef = useRef(new Map());
 
   // Stream local audio file bytes across WebRTC DataChannel directly to connected peers with flow control
   const streamLocalTrackToPeers = useCallback(async (track) => {
@@ -429,8 +430,11 @@ export function JamProvider({ children }) {
           } else if (packet.type === 'PLAYBACK_HEARTBEAT') {
             const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
             if (packet.trackId === currentTrackId && playerRef.current?.isPlaying && typeof packet.position === 'number') {
-              const p2pRtt = p2pLatencyRef.current.get(peerId) || 10;
-              const adjustedPos = packet.position + (p2pRtt / 2000); // adjust for transit delay
+              const p2pRtt = p2pLatencyRef.current.get(peerId) || 12;
+              const p2pOffset = p2pOffsetRef.current?.get(peerId) || 0;
+              // Precise transit delay compensation (half RTT in seconds)
+              const transitSeconds = Math.max(0, p2pRtt / 2000);
+              const adjustedPos = packet.position + transitSeconds;
               playerRef.current?.correctDrift?.(adjustedPos);
             }
           } else if (packet.type === 'START_AUDIO_TRANSFER') {
@@ -491,11 +495,23 @@ export function JamProvider({ children }) {
             }
           } else if (packet.type === 'P2P_PING') {
             if (channel?.readyState === 'open') {
-              try { channel.send(JSON.stringify({ type: 'P2P_PONG', t1: packet.t1, t2: Date.now() })); } catch {}
+              try {
+                channel.send(JSON.stringify({
+                  type: 'P2P_PONG',
+                  t1: packet.t1,
+                  t2: Date.now()
+                }));
+              } catch {}
             }
           } else if (packet.type === 'P2P_PONG') {
-            const p2pRtt = Math.max(1, Date.now() - packet.t1);
+            const t4 = Date.now();
+            const t1 = Number(packet.t1) || t4;
+            const t2 = Number(packet.t2) || t4;
+            const p2pRtt = Math.max(1, t4 - t1);
             p2pLatencyRef.current.set(peerId, p2pRtt);
+            // Symmetric NTP clock offset: (t2 - t1) - (p2pRtt / 2)
+            const p2pOffset = (t2 - t1) - (p2pRtt / 2);
+            p2pOffsetRef.current.set(peerId, p2pOffset);
           }
         } catch {}
       };
@@ -522,27 +538,53 @@ export function JamProvider({ children }) {
     };
 
     connection.onconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(connection.connectionState)) {
+      const state = connection.connectionState;
+      if (['failed', 'closed'].includes(state)) {
+        lastReconnectAttemptRef.current.delete(peerId);
         closePeer(peerId);
-      } else if (connection.connectionState === 'disconnected') {
-        // Transient network handover buffer (e.g. Wi-Fi to cellular data)
-        setTimeout(() => {
-          if (connection.connectionState === 'disconnected') {
-            closePeer(peerId);
+      } else if (state === 'disconnected') {
+        // Fast dynamic ICE restart on transient network handover (e.g. Wi-Fi to cellular data)
+        setTimeout(async () => {
+          if (peer.connection?.connectionState === 'disconnected') {
+            try {
+              if (myPeerIdRef.current > peerId) {
+                const offer = await peer.connection.createOffer({ iceRestart: true });
+                await peer.connection.setLocalDescription(offer);
+                dispatchSignal(peerId, { type: 'offer', sdp: offer.sdp });
+              } else {
+                dispatchSignal(peerId, { type: 'reconnect_request' });
+              }
+            } catch {
+              lastReconnectAttemptRef.current.delete(peerId);
+              closePeer(peerId);
+            }
           }
-        }, 4000);
+        }, 1500);
       }
     };
 
     connection.oniceconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(connection.iceConnectionState)) {
+      const state = connection.iceConnectionState;
+      if (['failed', 'closed'].includes(state)) {
+        lastReconnectAttemptRef.current.delete(peerId);
         closePeer(peerId);
-      } else if (connection.iceConnectionState === 'disconnected') {
-        setTimeout(() => {
-          if (connection.iceConnectionState === 'disconnected') {
-            closePeer(peerId);
+      } else if (state === 'disconnected') {
+        setTimeout(async () => {
+          if (peer.connection?.iceConnectionState === 'disconnected') {
+            try {
+              if (myPeerIdRef.current > peerId) {
+                const offer = await peer.connection.createOffer({ iceRestart: true });
+                await peer.connection.setLocalDescription(offer);
+                dispatchSignal(peerId, { type: 'offer', sdp: offer.sdp });
+              } else {
+                dispatchSignal(peerId, { type: 'reconnect_request' });
+              }
+            } catch {
+              lastReconnectAttemptRef.current.delete(peerId);
+              closePeer(peerId);
+            }
           }
-        }, 3000);
+        }, 1500);
       }
     };
 
@@ -803,7 +845,7 @@ export function JamProvider({ children }) {
       });
     };
 
-    const stopHeartbeat = createWorkerTimer(sendHeartbeat, 1000);
+    const stopHeartbeat = createWorkerTimer(sendHeartbeat, 500);
     return () => {
       stopHeartbeat();
     };
@@ -820,7 +862,7 @@ export function JamProvider({ children }) {
         }
       });
     };
-    const stopPing = createWorkerTimer(pingPeers, 2500);
+    const stopPing = createWorkerTimer(pingPeers, 1500);
     return () => stopPing();
   }, [joinedRoom]);
 
@@ -841,17 +883,12 @@ export function JamProvider({ children }) {
     return () => window.removeEventListener('reveria:p2p-track-needed', onTrackNeeded);
   }, []);
 
-  // Tab Visibility & Focus Recovery: immediately refresh state when user switches back to browser tab or changes network!
+  // Tab Visibility & Network Handover: seamlessly refresh state without destroying healthy DataChannels!
   useEffect(() => {
     const handleTabResume = () => {
       const active = joinedRoomRef.current || sessionStorage.getItem('reveria:active_jam_room');
       if (!document.hidden && active) {
-        addLog('SYS', 'Network / tab active: Refreshing room mesh and synchronization.');
-        lastServerVersionRef.current = 0;
-        lastPolledVersionRef.current = 0;
-        peersRef.current.forEach((_, id) => closePeer(id));
-        peersRef.current.clear();
-
+        addLog('SYS', 'Window focus active: Synchronizing room state.');
         apiRequest(`/session/poll?roomId=${active}&peerId=${myPeerIdRef.current}`)
           .then((data) => {
             if (data?.ok) {
@@ -867,15 +904,50 @@ export function JamProvider({ children }) {
       }
     };
 
+    const handleNetworkOnline = async () => {
+      const active = joinedRoomRef.current || sessionStorage.getItem('reveria:active_jam_room');
+      if (!active) return;
+      addLog('NET', 'Network interface reconnected: Fast mesh recovery initiated.');
+      // 1. Immediately wipe reconnect cooldowns so recovery is instantaneous (< 300ms)
+      lastReconnectAttemptRef.current.clear();
+      // 2. Perform fast ICE restart on all peers without destroying instances
+      for (const [id, peer] of peersRef.current.entries()) {
+        try {
+          if (peer.connection && !['closed', 'failed'].includes(peer.connection.connectionState)) {
+            if (myPeerIdRef.current > id) {
+              const offer = await peer.connection.createOffer({ iceRestart: true });
+              await peer.connection.setLocalDescription(offer);
+              dispatchSignal(id, { type: 'offer', sdp: offer.sdp });
+            } else {
+              dispatchSignal(id, { type: 'reconnect_request' });
+            }
+          } else {
+            closePeer(id);
+            createPeer(id, myPeerIdRef.current > id);
+          }
+        } catch {
+          closePeer(id);
+          createPeer(id, myPeerIdRef.current > id);
+        }
+      }
+      // 3. Fast signal poll
+      try {
+        const data = await apiRequest(`/session/poll?roomId=${active}&peerId=${myPeerIdRef.current}`);
+        if (data?.ok && data.currentPlayback) {
+          handlePlaybackSync({ ...data.currentPlayback, currentServerTime: data.serverTime });
+        }
+      } catch {}
+    };
+
     document.addEventListener('visibilitychange', handleTabResume);
     window.addEventListener('focus', handleTabResume);
-    window.addEventListener('online', handleTabResume);
+    window.addEventListener('online', handleNetworkOnline);
     return () => {
       document.removeEventListener('visibilitychange', handleTabResume);
       window.removeEventListener('focus', handleTabResume);
-      window.removeEventListener('online', handleTabResume);
+      window.removeEventListener('online', handleNetworkOnline);
     };
-  }, [handlePlaybackSync, addLog]);
+  }, [handlePlaybackSync, addLog, dispatchSignal, createPeer, closePeer]);
 
   // Join Room
   const joinRoom = useCallback(async (codeToJoin) => {

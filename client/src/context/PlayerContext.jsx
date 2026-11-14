@@ -70,6 +70,22 @@ export function PlayerProvider({ children }) {
   const [isMuted, setIsMuted] = useState(false);
   const prevVolumeRef = useRef(80);
 
+  // Platform Audio Pipeline Detection (Android single stream focus vs PC parallel mixing)
+  const isAndroidDevice = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+  const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  // Microsecond Hardware Acoustic Offset (compensates for mobile OS hardware buffer latency)
+  const defaultAcousticOffset = isAndroidDevice ? -25 : 0; // -25ms lead on Android hardware
+  const [acousticOffset, setAcousticOffset] = useState(() => {
+    const saved = localStorage.getItem('reveria:acousticOffset');
+    return saved !== null ? Number(saved) : defaultAcousticOffset;
+  });
+  const acousticOffsetRef = useRef(acousticOffset);
+  useEffect(() => {
+    acousticOffsetRef.current = acousticOffset;
+    localStorage.setItem('reveria:acousticOffset', String(acousticOffset));
+  }, [acousticOffset]);
+
   // Group Jam & Pseudo-Server Sync refs
   const roomVersionsRef = useRef(new Map());
   const scheduledTimerRef = useRef(null);
@@ -119,11 +135,13 @@ export function PlayerProvider({ children }) {
     if (!audio || audio.paused || !isPlayingRef.current) return;
     if (typeof remotePos !== 'number' || !Number.isFinite(remotePos)) return;
 
-    const drift = remotePos - audio.currentTime;
+    // Apply hardware acoustic calibration offset (e.g. -25ms for Android hardware delay)
+    const effectiveRemotePos = remotePos + (acousticOffsetRef.current / 1000);
+    const drift = effectiveRemotePos - audio.currentTime;
     const absDrift = Math.abs(drift);
 
-    // Zone 1: Haas Precedence Deadband (<= 25ms): Bit-perfect native 1.0x playback
-    if (absDrift <= 0.025) {
+    // Zone 1: Sub-millisecond Coherence (< 4ms): Bit-perfect native 1.0x playback
+    if (absDrift <= 0.004) {
       if (audio.playbackRate !== 1.0) {
         audio.playbackRate = 1.0;
       }
@@ -131,29 +149,32 @@ export function PlayerProvider({ children }) {
     }
 
     // Zone 3: Hard Phase-Snap (> 1.2s): Only snap on true human seeks or massive desyncs (> 1200ms)
-    // Snapping too aggressively (< 1s) causes mobile browsers to purge decoder buffers, creating stutter!
     if (absDrift > 1.2) {
-      audio.currentTime = remotePos;
-      setPosition(remotePos);
+      audio.currentTime = effectiveRemotePos;
+      setPosition(effectiveRemotePos);
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
       audio.playbackRate = 1.0;
       return;
     }
 
-    // Zone 2: Continuous Dynamic Phase-Locked Loop (25ms - 1200ms):
-    // Smooth proportional frequency slew (±3.5%) without buffer purges or audio clicks
+    // Zone 2: Continuous Precision Dynamic Proportional Slew (4ms - 1200ms):
+    // Smooth proportional frequency slew without buffer purges or audio clicks
     const now = Date.now();
-    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 250)) {
+    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 180)) {
       lastRateNudgeTimeRef.current = now;
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
 
-      // Proportional gain Kp = 0.06, clamped to ±0.035 (3.5% rate adjustment)
-      const rateNudge = Math.max(-0.035, Math.min(0.035, drift * 0.06));
+      const sign = Math.sign(drift);
+      // Proportional magnitude scaled for rapid 1-second phase lock
+      const magnitude = Math.min(0.045, Math.max(0.012, absDrift * 0.18));
+      const rateNudge = sign * magnitude;
       audio.playbackRate = 1.0 + rateNudge;
 
       rateNudgeTimerRef.current = setTimeout(() => {
-        if (audioRef.current) audioRef.current.playbackRate = 1.0;
-      }, 500);
+        if (audioRef.current && Math.abs(effectiveRemotePos - audioRef.current.currentTime) <= 0.005) {
+          audioRef.current.playbackRate = 1.0;
+        }
+      }, 550);
     }
   }, []);
 
@@ -663,6 +684,12 @@ export function PlayerProvider({ children }) {
     let targetPos = 0;
     if (isExplicitTrackChange) {
       targetPos = 0;
+      if (payload.startWallTime && isTargetPlaying) {
+        const rawElapsed = Math.max(0, (nowServerEst - payload.startWallTime) / 1000);
+        if (rawElapsed > 0 && rawElapsed < 10) {
+          targetPos = rawElapsed;
+        }
+      }
     } else if (isExplicitSeek) {
       targetPos = Math.max(0, Number(remotePosition) || 0);
     } else if (isTargetPlaying) {
@@ -680,6 +707,11 @@ export function PlayerProvider({ children }) {
       }
     } else {
       targetPos = Math.max(0, Number(remotePosition) || 0);
+    }
+
+    // Apply hardware acoustic offset compensation (e.g. -25ms mobile pipeline buffer lead)
+    if (targetPos > 0 && acousticOffsetRef.current !== 0) {
+      targetPos = Math.max(0, targetPos + (acousticOffsetRef.current / 1000));
     }
 
     // A. Track is different -> ALWAYS load and synchronize the room's track immediately!
@@ -891,6 +923,11 @@ export function PlayerProvider({ children }) {
     calibrateClock,
     correctDrift,
     isAutoplayBlocked,
+    isAndroid: isAndroidDevice,
+    isMobile: isMobileDevice,
+    hardwareAudioMode: isAndroidDevice ? 'exclusive_single_stream' : 'parallel_multi_stream',
+    acousticOffset,
+    setAcousticOffset,
     clockSkew: clockSkewRef.current,
     getAudioCurrentTime: () => audioRef.current?.currentTime || 0
   }), [
@@ -900,6 +937,9 @@ export function PlayerProvider({ children }) {
     duration,
     error,
     isAutoplayBlocked,
+    isAndroidDevice,
+    isMobileDevice,
+    acousticOffset,
     localTracks,
     queue,
     setQueue,

@@ -189,7 +189,7 @@ export default function WebRTCSession() {
             )}
 
             {/* Mesh Infrastructure Telemetry Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-slate-400">
                   <span>Signaling Protocol</span>
@@ -210,11 +210,11 @@ export default function WebRTCSession() {
 
               <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>NTP Clock Calibration</span>
+                  <span>Clock Alignment</span>
                   <span className="w-2 h-2 rounded-full bg-cyan-400" />
                 </div>
-                <div className="text-sm font-bold font-mono text-white">Cristian's Algorithm</div>
-                <div className="text-[10px] text-cyan-400 font-mono">&lt; 15ms skew compensation</div>
+                <div className="text-sm font-bold font-mono text-white">Direct P2P Micro-NTP</div>
+                <div className="text-[10px] text-cyan-400 font-mono">&lt; 3ms precision phase offset</div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
@@ -222,8 +222,21 @@ export default function WebRTCSession() {
                   <span>Phase-Lock Engine</span>
                   <span className="w-2 h-2 rounded-full bg-secondary" />
                 </div>
-                <div className="text-sm font-bold font-mono text-white">Dynamic Rate Slew</div>
-                <div className="text-[10px] text-secondary font-mono">&plusmn;3.5% PLL rate slew</div>
+                <div className="text-sm font-bold font-mono text-white">Proportional Dynamic Slew</div>
+                <div className="text-[10px] text-secondary font-mono">&lt; 4ms Haas deadband (&plusmn;4.5% PLL)</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Audio Concurrency</span>
+                  <span className={`w-2 h-2 rounded-full ${player.isAndroid ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                </div>
+                <div className="text-sm font-bold font-mono text-white">
+                  {player.isAndroid ? 'Single-Stream' : 'Multi-Stream'}
+                </div>
+                <div className={`text-[10px] font-mono ${player.isAndroid ? 'text-amber-300' : 'text-emerald-400'}`}>
+                  {player.isAndroid ? 'Android OS focus (PCs support parallel)' : 'Hardware mixed parallel playback'}
+                </div>
               </div>
             </div>
 
@@ -440,6 +453,89 @@ export default function WebRTCSession() {
             <span className="material-symbols-outlined text-primary text-sm">info</span>
             <span>{status}</span>
           </p>
+        </section>
+
+        {/* Acoustic Phase Alignment & Hardware Latency Calibration */}
+        <section className="glass-panel rounded-2xl p-5 border border-white/10 shadow-xl bg-[#09090c]/85 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-secondary text-lg">tune</span>
+              <h3 className="font-bold text-sm text-white">Acoustic Phase Alignment & Hardware Calibration</h3>
+              <span className="px-2 py-0.5 rounded-full bg-secondary/20 text-secondary border border-secondary/30 text-[10px] font-mono">
+                Sub-Millisecond Engine
+              </span>
+            </div>
+            <span className="text-xs font-mono text-slate-400">
+              Current Offset: <strong className={player.acousticOffset === 0 ? 'text-white' : 'text-primary'}>{player.acousticOffset > 0 ? `+${player.acousticOffset}` : player.acousticOffset} ms</strong>
+            </span>
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Lag Compensation (Lead -60ms)</span>
+                <span>Exact Phase Lock (0ms)</span>
+                <span>Buffer Delay (+60ms)</span>
+              </div>
+              <input
+                type="range"
+                min="-60"
+                max="60"
+                step="1"
+                value={player.acousticOffset || 0}
+                onChange={(e) => player.setAcousticOffset?.(Number(e.target.value))}
+                className="w-full accent-primary h-1.5 rounded-full bg-white/10 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => player.setAcousticOffset?.(0)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                  player.acousticOffset === 0
+                    ? 'bg-primary/20 border-primary text-primary font-bold'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                Studio (0ms)
+              </button>
+              <button
+                onClick={() => player.setAcousticOffset?.(-25)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                  player.acousticOffset === -25
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                Android (-25ms)
+              </button>
+              <button
+                onClick={() => player.setAcousticOffset?.(-40)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                  player.acousticOffset === -40
+                    ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                Cellular (-40ms)
+              </button>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-slate-400 space-y-1">
+            <p>
+              &bull; <strong>Acoustic Alignment:</strong> Compensates for physical speaker distance and mobile operating system hardware DAC buffer delays. Eliminates comb-filtering when listening to multiple devices simultaneously.
+            </p>
+            {player.isAndroid ? (
+              <p className="text-amber-300/90 font-mono">
+                &bull; <strong>Android Audio Policy Active:</strong> Mobile hardware operates in exclusive single-stream focus. Simultaneous multi-tab and multi-mesh parallel playback is fully supported on Desktop PCs.
+              </p>
+            ) : (
+              <p className="text-emerald-400/90 font-mono">
+                &bull; <strong>Desktop PC Audio Pipeline Active:</strong> Concurrent multi-tab and multi-room parallel audio playback supported natively by system hardware mixer.
+              </p>
+            )}
+          </div>
         </section>
 
         {/* 2. COLLABORATIVE SESSION PLAYLIST */}

@@ -8,10 +8,14 @@ function TrackCard({ trackData, queue, onDelete }) {
   const isAdmin = user?.role === 'admin';
   const isServerTrack = !localUrl && _id;
 
-  const isThisTrackPlaying = currentTrack?._id === _id && isPlaying;
+  const trackId = _id || trackData.id || localUrl;
+  const currentId = currentTrack?._id || currentTrack?.id || currentTrack?.localUrl;
+  const isMatch = Boolean((trackId && currentId && trackId === currentId) || (currentTrack?.title === title && currentTrack?.artist === artist));
+  const isThisTrackPlaying = isMatch && isPlaying;
 
-  const handlePlayClick = () => {
-    if (currentTrack?._id === _id) {
+  const handlePlayClick = (e) => {
+    e?.stopPropagation?.();
+    if (isMatch) {
       togglePlay();
     } else {
       playTrack(trackData, queue);

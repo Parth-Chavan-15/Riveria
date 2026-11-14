@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useJam } from '../context/JamContext';
@@ -24,6 +24,18 @@ export default function TopBar({ onToggleMobileMenu = () => {} }) {
   ]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const notificationRef = useRef(null);
+
+  useEffect(() => {
+    if (!showDropdown) return;
+    const handleClickOutside = (e) => {
+      if (notificationRef.current && !notificationRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [showDropdown]);
 
   const routeInfo = ROUTE_TITLES[location.pathname] || { title: 'Riveria Chamber', subtitle: 'Lossless Audio Haven' };
 
@@ -138,7 +150,10 @@ export default function TopBar({ onToggleMobileMenu = () => {} }) {
 
           {/* Luxury Notification Dropdown */}
           {showDropdown && (
-            <div className="absolute top-12 right-0 w-80 glass-panel border border-white/10 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-2xl bg-[#0d0c13]/95 animate-fade-in z-50">
+            <div
+              ref={notificationRef}
+              className="absolute top-12 right-0 w-80 sm:w-96 border border-white/20 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.95)] overflow-hidden backdrop-blur-2xl bg-[#12111c]/98 animate-fade-in z-50"
+            >
               <div className="p-3.5 border-b border-white/10 bg-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-sm text-primary">bolt</span>

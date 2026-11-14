@@ -14,14 +14,17 @@ const GRADIENT_PRESETS = [
   { name: 'Amber Solitude', value: 'bg-gradient-to-br from-amber-600 via-orange-700 to-zinc-950' },
 ];
 
+// In-memory module cache for instant 0ms tab switching
+let cachedCloudTracks = null;
+
 export default function Dashboard() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [tracks, setTracks] = useState([]);
+  const [tracks, setTracks] = useState(() => cachedCloudTracks || []);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedCloudTracks);
   const { localTracks } = usePlayer();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -48,7 +51,11 @@ export default function Dashboard() {
   useEffect(() => {
     let active = true;
     apiRequest('/tracks')
-      .then((data) => active && setTracks(data))
+      .then((data) => {
+        if (!active) return;
+        cachedCloudTracks = data;
+        setTracks(data);
+      })
       .catch((requestError) => active && setError(requestError.message))
       .finally(() => active && setLoading(false));
 
@@ -195,7 +202,7 @@ export default function Dashboard() {
   );
 
   return (
-    <main className="flex-1 h-full overflow-y-auto px-5 pb-32 pt-24 md:ml-80 md:px-10 md:pt-28 scroll-smooth">
+    <main className="flex-1 h-full overflow-y-auto px-5 pb-52 pt-24 md:ml-80 md:px-10 md:pt-28 scroll-smooth">
       <section>
         {/* Top Header & Actions */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -205,8 +212,8 @@ export default function Dashboard() {
                 Your library
               </p>
               {isAdmin && (
-                <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-400 border border-red-500/40">
-                  Admin Active
+                <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary border border-primary/40">
+                  Architect Active
                 </span>
               )}
             </div>
@@ -232,7 +239,7 @@ export default function Dashboard() {
             {isAdmin && (
               <button
                 onClick={() => navigate('/admin/catalog')}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-rose-500 to-purple-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] transition-all hover:scale-105 active:scale-95"
+                className="inline-flex items-center gap-2 rounded-full bg-primary/10 border border-primary/30 px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary shadow-[0_0_15px_rgba(208,188,255,0.2)] hover:bg-primary/20 transition-all hover:scale-105 active:scale-95"
               >
                 <span className="material-symbols-outlined text-base">library_music</span>
                 <span>Catalog Master &rarr;</span>
@@ -284,6 +291,9 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* Bottom clearance buffer so floating BottomPlayer never covers the last rows */}
+        <div className="h-28 w-full pointer-events-none" />
       </section>
 
       {/* ADMIN CLOUD AUDIO UPLOAD MODAL */}

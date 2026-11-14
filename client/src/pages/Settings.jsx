@@ -284,7 +284,7 @@ export default function Settings() {
   };
 
   return (
-    <main className="flex-1 h-full overflow-y-auto px-4 pb-36 pt-24 md:ml-80 md:px-8 md:pt-28 text-white scroll-smooth">
+    <main className="flex-1 h-full overflow-y-auto px-4 pb-52 pt-24 md:ml-80 md:px-8 md:pt-28 text-white scroll-smooth">
       <div className="mx-auto max-w-4xl space-y-8">
         <div>
           <div className="flex items-center gap-2">
@@ -753,6 +753,9 @@ export default function Settings() {
             Save Preferences
           </button>
         </div>
+
+        {/* Bottom clearance spacer */}
+        <div className="h-28 w-full pointer-events-none" />
       </div>
     </main>
   );

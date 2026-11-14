@@ -227,6 +227,8 @@ export default function LandingPage() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(80);
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('00:00');
   const [totalDurationFormatted, setTotalDurationFormatted] = useState('02:38');
   const [activeSection, setActiveSection] = useState(0);
@@ -366,14 +368,14 @@ export default function LandingPage() {
       audioCoordinator.register(heroAudio);
     }
 
-    // B. Setup background movement tracks with instant metadata preloading
+    // B. Setup background movement tracks with instant auto-preloading
     STATIC_MOVEMENT_TRACKS.slice(1).forEach((track) => {
       const streamUrl = getAudioUrl(track);
       if (!audioPoolRef.current.has(track._id)) {
         const audioElem = new Audio();
-        audioElem.preload = 'metadata';
+        audioElem.preload = 'auto';
         audioElem.src = streamUrl;
-        audioElem.volume = volume / 100;
+        audioElem.volume = volumeRef.current / 100;
         attachWatchdog(audioElem, track);
         audioPoolRef.current.set(track._id, audioElem);
         audioCoordinator.register(audioElem);
@@ -400,7 +402,7 @@ export default function LandingPage() {
       active = false;
       stopAllLandingAudio();
     };
-  }, [volume, stopAllLandingAudio]);
+  }, [stopAllLandingAudio]);
 
   // Active track object
   const activePiece = cloudTracks[currentTrackIndex] || {
@@ -411,7 +413,7 @@ export default function LandingPage() {
     imageColor: 'bg-gradient-to-br from-[#201735] via-[#161226] to-[#0e0e0f]',
   };
 
-  // 2. Playback Lifecycle Manager with Sequential Fade-Out -> Fade-In
+  // 2. Playback Lifecycle Manager with Instant Parallel Crossfade
   const playTrackDirect = useCallback(
     async (idx, shouldPlay = true, shouldCrossfade = false) => {
       const targetTrack = cloudTracksRef.current[idx];
@@ -433,24 +435,16 @@ export default function LandingPage() {
       }
 
       const prevAudio = activeAudioRef.current;
+      const targetVol = volumeRef.current / 100;
 
-      // Sequential Crossfade: Prior audio fades out completely to silence FIRST, then next audio fades in!
+      // Parallel Simultaneous Crossfade: Zero-delay transition
       if (shouldCrossfade && prevAudio && !prevAudio.paused && prevAudio !== nextAudioElem) {
-        // Step 1: Smoothly fade out the active track to silence
-        await fadeOut(prevAudio, 300, isCurrentTx);
-
-        // If superseded by a newer scroll or click, abort
-        if (!isCurrentTx()) return;
-
-        // Invariant: Force-silence any other lingering audio in pool
-        silenceAllExcept(nextAudioElem);
-
-        // Step 2: Switch references once prior audio has stopped
+        // Step 1: Switch active audio reference immediately
         activeAudioRef.current = nextAudioElem;
         if (typeof window !== 'undefined') window.__landingAudio = nextAudioElem;
         setCurrentTrackIndex(idx);
 
-        // Setup time updates
+        // Setup time updates & looping
         nextAudioElem.ontimeupdate = () => {
           if (nextAudioElem.duration && isFinite(nextAudioElem.duration)) {
             setProgress((nextAudioElem.currentTime / nextAudioElem.duration) * 100);
@@ -468,8 +462,16 @@ export default function LandingPage() {
           playTrackDirectRef.current?.(nextIdx, true, true);
         };
 
-        // Step 3: Smoothly fade in the new track from silence to master volume
-        const fadeSucceeded = await fadeIn(nextAudioElem, volume / 100, 400, isCurrentTx);
+        // Step 2: Concurrently fade out previous track to silence while incoming track fades in
+        fadeOut(prevAudio, 250, isCurrentTx).then(() => {
+          if (prevAudio !== activeAudioRef.current) {
+            prevAudio.pause();
+            prevAudio.currentTime = 0;
+          }
+        });
+
+        // Step 3: Concurrently fade in next track starting from t = 0 immediately
+        const fadeSucceeded = await fadeIn(nextAudioElem, targetVol, 250, isCurrentTx);
         if (fadeSucceeded && isCurrentTx()) {
           setIsPlaying(true);
         }
@@ -514,7 +516,7 @@ export default function LandingPage() {
         }
       }
     },
-    [getAudioUrl, volume, silenceAllExcept]
+    [getAudioUrl, silenceAllExcept]
   );
 
   useEffect(() => {
@@ -1006,7 +1008,14 @@ export default function LandingPage() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-8 items-center">
                 {/* Artwork & Rotating Vinyl Core */}
                 <div className="lg:col-span-5 flex flex-col items-center sm:items-start">
-                  <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl bg-[#09090c] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl group">
+                  <div
+                    onClick={handleTogglePlay}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleTogglePlay()}
+                    aria-label={isPlaying ? `Pause ${activePiece.title}` : `Play ${activePiece.title}`}
+                    className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl bg-[#09090c] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl group cursor-pointer active:scale-95 transition-all"
+                  >
                     {activePiece.imageSrc ? (
                       <div className="absolute inset-0">
                         <img
@@ -1024,12 +1033,13 @@ export default function LandingPage() {
                     >
                       <div className="w-12 h-12 rounded-full border border-[#d0bcff]/40 bg-gradient-to-br from-[#d0bcff] to-[#89ceff] flex items-center justify-center shadow-[0_0_20px_rgba(208,188,255,0.4)]">
                         <span className="material-symbols-outlined text-black text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                          graphic_eq
+                          {isPlaying ? 'pause' : 'graphic_eq'}
                         </span>
                       </div>
                     </motion.div>
-                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/90 uppercase tracking-widest relative z-10 bg-black/50 px-2 py-0.5 rounded">
-                      Console Deck
+                    <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#d0bcff]/90 uppercase tracking-widest relative z-10 bg-black/50 px-2 py-0.5 rounded flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`}></span>
+                      <span>{isPlaying ? 'Tap to Pause' : 'Tap to Play'}</span>
                     </div>
                   </div>
                 </div>

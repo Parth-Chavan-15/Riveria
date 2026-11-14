@@ -7,7 +7,23 @@ import { apiRequest, getAccessToken } from '../services/api';
 const defaultIceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' }
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:openrelay.metered.ca:80' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
 ];
 
 function getIceConfiguration() {
@@ -160,6 +176,7 @@ export function JamProvider({ children }) {
   const lastServerVersionRef = useRef(0);
   const peerSequencesRef = useRef(new Map());
   const localSeqRef = useRef(0);
+  const lastReconnectAttemptRef = useRef(new Map());
 
   // Persistent room state restored across route navigation and browser tabs
   const getSavedRoom = () => {
@@ -452,19 +469,16 @@ export function JamProvider({ children }) {
               const targetPos = Math.max(0, (transfer.currentPos || 0) + transferElapsed);
 
               addLog('P2P_FILE', `P2P audio stream for "${transfer.title}" loaded in RAM! Locking live playback at ${targetPos.toFixed(1)}s.`);
-              await playerRef.current?.playTrack?.(p2pTrack, collabPlaylistRef.current, false, true /* fromSync = true! Prevents feedback echo loop! */);
+              await playerRef.current?.playTrack?.(p2pTrack, collabPlaylistRef.current, true /* autoPlay */, true /* fromSync = true */);
               const audioElem = window.__riveriaAudio;
-              if (audioElem) {
-                if (targetPos > 0) {
-                  if (audioElem.readyState >= 1) {
-                    audioElem.currentTime = targetPos;
-                  } else {
-                    audioElem.addEventListener('loadedmetadata', () => {
-                      try { audioElem.currentTime = targetPos; } catch {}
-                    }, { once: true });
-                  }
+              if (audioElem && targetPos > 0) {
+                if (audioElem.readyState >= 1) {
+                  audioElem.currentTime = targetPos;
+                } else {
+                  audioElem.addEventListener('loadedmetadata', () => {
+                    try { audioElem.currentTime = targetPos; } catch {}
+                  }, { once: true });
                 }
-                audioElem.play().catch(() => {});
               }
               activeIncomingTransferRef.current = null;
             }
@@ -731,15 +745,21 @@ export function JamProvider({ children }) {
                 ['failed', 'closed'].includes(existing.connection?.iceConnectionState);
 
               if (isDisconnected) {
-                if (existing) closePeer(remote.peerId);
-                if (myPeerIdRef.current > remote.peerId) {
-                  addLog('JOIN', `Mesh tunnel reset with peer ${remote.peerId.slice(0, 8)}. Sending offer...`);
-                  const peer = createPeer(remote.peerId, true);
-                  const offer = await peer.connection.createOffer({ iceRestart: true });
-                  await peer.connection.setLocalDescription(offer);
-                  await dispatchSignal(remote.peerId, { type: 'offer', sdp: offer.sdp });
-                } else {
-                  await dispatchSignal(remote.peerId, { type: 'reconnect_request' });
+                const now = Date.now();
+                const lastAttempt = lastReconnectAttemptRef.current.get(remote.peerId) || 0;
+                // Enforce 10-second cooldown between reconnection attempts to prevent cellular signaling storms
+                if (now - lastAttempt > 10000) {
+                  lastReconnectAttemptRef.current.set(remote.peerId, now);
+                  if (existing) closePeer(remote.peerId);
+                  if (myPeerIdRef.current > remote.peerId) {
+                    addLog('JOIN', `Mesh tunnel reset with peer ${remote.peerId.slice(0, 8)}. Sending offer...`);
+                    const peer = createPeer(remote.peerId, true);
+                    const offer = await peer.connection.createOffer({ iceRestart: true });
+                    await peer.connection.setLocalDescription(offer);
+                    await dispatchSignal(remote.peerId, { type: 'offer', sdp: offer.sdp });
+                  } else {
+                    await dispatchSignal(remote.peerId, { type: 'reconnect_request' });
+                  }
                 }
               }
             }
@@ -1055,6 +1075,14 @@ export function JamProvider({ children }) {
           currentPlayback: actionPayload
         })
       }).catch(() => {});
+
+      // 4. If playing a private local file, stream its binary buffer to connected peers across WebRTC DataChannel
+      if (detail.track?.type === 'Local' || (targetId && String(targetId).startsWith('local-'))) {
+        const localMatch = playerRef.current?.localTracks?.find((t) => (t._id || t.id) === targetId);
+        if (localMatch) {
+          streamLocalTrackToPeers(localMatch);
+        }
+      }
     };
 
     window.addEventListener('reveria:jam-action', onJamAction);

@@ -14,7 +14,7 @@ export default function LocalSyncHub() {
   const inputRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const { localTracks, mountLocalFiles, removeLocalTrack, playTrack, currentTrack, isPlaying } = usePlayer();
+  const { localTracks, mountLocalFiles, removeLocalTrack, playTrack, togglePlay, currentTrack, isPlaying } = usePlayer();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [deployingId, setDeployingId] = useState(null);
@@ -94,7 +94,7 @@ export default function LocalSyncHub() {
   };
 
   return (
-    <main className="flex-1 h-full overflow-y-auto p-5 pb-36 pt-24 md:ml-80 md:p-10 md:pt-28 text-white scroll-smooth">
+    <main className="flex-1 h-full overflow-y-auto p-5 pb-52 pt-24 md:ml-80 md:p-10 md:pt-28 text-white scroll-smooth">
       <div className="max-w-5xl">
         {/* Admin Staging Suite Banner */}
       {isAdmin && (
@@ -222,12 +222,17 @@ export default function LocalSyncHub() {
                 key={track._id}
                 className="glass-panel flex items-center gap-3.5 rounded-xl p-4 border border-white/10 hover:border-white/20 transition-all bg-[#09090c]/70 hover:bg-white/[0.04]"
               >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-600 via-blue-700 to-indigo-950 overflow-hidden relative flex items-center justify-center flex-shrink-0 border border-white/10 shadow-md">
+                <div
+                  onClick={() => isThisPlaying ? togglePlay() : playTrack(track, localTracks)}
+                  role="button"
+                  tabIndex={0}
+                  className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-600 via-blue-700 to-indigo-950 overflow-hidden relative flex items-center justify-center flex-shrink-0 border border-white/10 shadow-md cursor-pointer group"
+                >
                   {track.imageSrc ? (
                     <img
                       src={track.imageSrc}
                       alt={track.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
                       }}
@@ -237,6 +242,11 @@ export default function LocalSyncHub() {
                       <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                     </svg>
                   )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <span className="material-symbols-outlined text-white text-lg">
+                      {isThisPlaying ? 'pause' : 'play_arrow'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -258,7 +268,7 @@ export default function LocalSyncHub() {
                     <button
                       onClick={() => handlePromoteToCloud(track)}
                       disabled={deployingId === track._id}
-                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 transition-all active:scale-95"
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-all active:scale-95"
                       title="Deploy this local master recording directly to MongoDB GridFS Cloud"
                     >
                       <span className="material-symbols-outlined text-sm">
@@ -269,8 +279,8 @@ export default function LocalSyncHub() {
                   )}
 
                   <button
-                    onClick={() => playTrack(track, localTracks)}
-                    className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    onClick={() => isThisPlaying ? togglePlay() : playTrack(track, localTracks)}
+                    className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                       isThisPlaying
                         ? 'bg-primary text-black font-bold shadow-[0_0_12px_rgba(208,188,255,0.4)]'
                         : 'bg-white/10 text-white hover:bg-white/20'
@@ -305,6 +315,9 @@ export default function LocalSyncHub() {
             </div>
           )}
         </div>
+
+        {/* Bottom clearance buffer so floating BottomPlayer never covers the last mounted tracks */}
+        <div className="h-28 w-full pointer-events-none" />
       </section>
       </div>
     </main>

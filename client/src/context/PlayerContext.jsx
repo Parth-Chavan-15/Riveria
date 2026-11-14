@@ -122,16 +122,17 @@ export function PlayerProvider({ children }) {
     const drift = remotePos - audio.currentTime;
     const absDrift = Math.abs(drift);
 
-    // Zone 1: Haas Precedence Deadband (<= 18ms): Bit-perfect native 1.0x playback
-    if (absDrift <= 0.018) {
+    // Zone 1: Haas Precedence Deadband (<= 25ms): Bit-perfect native 1.0x playback
+    if (absDrift <= 0.025) {
       if (audio.playbackRate !== 1.0) {
         audio.playbackRate = 1.0;
       }
       return;
     }
 
-    // Zone 3: Hard Phase-Snap (> 250ms): Snap immediately on seeks or tab un-minimize
-    if (absDrift > 0.25) {
+    // Zone 3: Hard Phase-Snap (> 1.2s): Only snap on true human seeks or massive desyncs (> 1200ms)
+    // Snapping too aggressively (< 1s) causes mobile browsers to purge decoder buffers, creating stutter!
+    if (absDrift > 1.2) {
       audio.currentTime = remotePos;
       setPosition(remotePos);
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
@@ -139,20 +140,20 @@ export function PlayerProvider({ children }) {
       return;
     }
 
-    // Zone 2: Continuous Phase-Locked Loop (18ms - 250ms):
-    // Smooth proportional slew without audible pitch warble
+    // Zone 2: Continuous Dynamic Phase-Locked Loop (25ms - 1200ms):
+    // Smooth proportional frequency slew (±3.5%) without buffer purges or audio clicks
     const now = Date.now();
-    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 350)) {
+    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 250)) {
       lastRateNudgeTimeRef.current = now;
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
 
-      // Proportional gain Kp = 0.08, clamped to ±0.025 (2.5% rate adjustment)
-      const rateNudge = Math.max(-0.025, Math.min(0.025, drift * 0.08));
+      // Proportional gain Kp = 0.06, clamped to ±0.035 (3.5% rate adjustment)
+      const rateNudge = Math.max(-0.035, Math.min(0.035, drift * 0.06));
       audio.playbackRate = 1.0 + rateNudge;
 
       rateNudgeTimerRef.current = setTimeout(() => {
         if (audioRef.current) audioRef.current.playbackRate = 1.0;
-      }, 450);
+      }, 500);
     }
   }, []);
 
@@ -653,19 +654,20 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     const isTargetPlaying = Boolean(remoteIsPlaying);
     const nowServerEst = clientNow + clockSkewRef.current;
-    const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id;
-    const isDifferentTrack = currentId !== targetId || !audio.src;
-    const isExplicitTrackChange = action === 'track_change' || isDifferentTrack;
+    const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id || currentTrackRef.current?.localUrl;
+    const isDifferentTrack = Boolean(currentId && targetId && currentId !== targetId) || (!currentId && Boolean(targetId)) || !audio.src;
+    const isExplicitTrackChange = action === 'track_change' || isDifferentTrack || (Number(remotePosition) === 0);
     const isExplicitSeek = action === 'seek';
 
     // 2. Compute target position: track changes always start at 0s, seeks jump directly
-    let targetPos = Math.max(0, Number(remotePosition) || 0);
+    let targetPos = 0;
     if (isExplicitTrackChange) {
       targetPos = 0;
     } else if (isExplicitSeek) {
       targetPos = Math.max(0, Number(remotePosition) || 0);
     } else if (isTargetPlaying) {
       // Catch-up for continuing streams: use server-measured elapsed delta if available
+      targetPos = Math.max(0, Number(remotePosition) || 0);
       if (currentServerTime && recordedServerTime && currentServerTime >= recordedServerTime) {
         const srvElapsed = (currentServerTime - recordedServerTime) / 1000;
         targetPos += Math.max(0, Math.min(3600, srvElapsed));
@@ -676,6 +678,8 @@ export function PlayerProvider({ children }) {
           targetPos += rawElapsed;
         }
       }
+    } else {
+      targetPos = Math.max(0, Number(remotePosition) || 0);
     }
 
     // A. Track is different -> ALWAYS load and synchronize the room's track immediately!

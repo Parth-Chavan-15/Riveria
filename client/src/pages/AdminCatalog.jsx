@@ -197,7 +197,7 @@ export default function AdminCatalog() {
   });
 
   return (
-    <main className="flex-1 h-full overflow-y-auto px-4 pb-36 pt-24 md:ml-80 md:px-8 md:pt-28 text-white scroll-smooth">
+    <main className="flex-1 h-full overflow-y-auto px-4 pb-52 pt-24 md:ml-80 md:px-8 md:pt-28 text-white scroll-smooth">
       <div className="mx-auto max-w-6xl space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -606,6 +606,9 @@ export default function AdminCatalog() {
             </div>
           </div>
         )}
+
+        {/* Bottom clearance spacer */}
+        <div className="h-28 w-full pointer-events-none" />
       </div>
     </main>
   );

@@ -56,27 +56,42 @@ export default function BottomPlayer() {
       {/* 1. LEFT SECTION: Track Metadata & Artwork */}
       <div className="flex items-center gap-3 md:gap-4 w-1/4 min-w-[140px] max-w-[280px]">
         <div
+          onClick={togglePlay}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && togglePlay()}
+          aria-label={isPlaying ? `Pause ${currentTrack.title}` : `Play ${currentTrack.title}`}
+          title={isPlaying ? 'Click to Pause' : 'Click to Play'}
           className={`w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden border border-white/10 ${
             currentTrack.imageColor || 'bg-gradient-to-br from-violet-600 to-indigo-950'
-          } relative flex items-center justify-center flex-shrink-0 shadow-lg group`}
+          } relative flex items-center justify-center flex-shrink-0 shadow-lg group cursor-pointer active:scale-95 transition-all`}
         >
           {currentTrack.imageSrc ? (
             <img
               src={currentTrack.imageSrc}
               alt={currentTrack.title}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
             />
           ) : null}
           <span className="material-symbols-outlined text-xl text-white/30 absolute">music_note</span>
-          {isPlaying && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <span className="flex gap-0.5 items-end h-4">
+          {isPlaying ? (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/60 transition-colors">
+              <span className="flex gap-0.5 items-end h-4 group-hover:hidden">
                 <span className="w-0.5 bg-primary h-full animate-[pulse_0.8s_ease-in-out_infinite]"></span>
                 <span className="w-0.5 bg-primary h-2/3 animate-[pulse_0.6s_ease-in-out_infinite]"></span>
                 <span className="w-0.5 bg-primary h-4/5 animate-[pulse_1s_ease-in-out_infinite]"></span>
+              </span>
+              <span className="material-symbols-outlined text-white text-lg hidden group-hover:block" style={{ fontVariationSettings: "'FILL' 1" }}>
+                pause
+              </span>
+            </div>
+          ) : (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                play_arrow
               </span>
             </div>
           )}

@@ -344,3 +344,78 @@ exports.updatePlaylist = async (req, res, next) => {
     next(err);
   }
 };
+
+// GET /api/session/active-rooms (Admin exclusive)
+exports.listActiveRooms = async (req, res, next) => {
+  try {
+    const cutoff = new Date(Date.now() - PEER_TIMEOUT_MS);
+    const rooms = await JamRoom.find({
+      $or: [
+        { 'peers.lastSeen': { $gte: cutoff } },
+        { 'currentPlayback.isPlaying': true }
+      ]
+    }).sort({ updatedAt: -1 }).lean();
+
+    const formatted = rooms.map((r) => {
+      const activePeers = (r.peers || []).filter(
+        (p) => new Date() - new Date(p.lastSeen) < PEER_TIMEOUT_MS
+      );
+      return {
+        roomId: r.roomId.toUpperCase(),
+        peerCount: activePeers.length,
+        peers: activePeers.map((p) => ({ peerId: p.peerId, email: p.email, role: p.role })),
+        currentPlayback: r.currentPlayback || null,
+        playlistCount: (r.playlist || []).length,
+        updatedAt: r.updatedAt
+      };
+    });
+
+    res.json({ ok: true, rooms: formatted, serverTime: Date.now() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/session/rooms/:roomId (Admin exclusive)
+exports.terminateRoom = async (req, res, next) => {
+  try {
+    const { roomId } = req.params;
+    const normalized = (roomId || '').trim().toLowerCase();
+    await JamRoom.deleteOne({ roomId: normalized });
+    await JamSignal.deleteMany({ roomId: normalized });
+    req.app.get('io')?.to(`jam:${normalized}`).emit('jam:room-terminated', { roomId: normalized });
+    res.json({ ok: true, message: `Jam room ${normalized.toUpperCase()} successfully terminated.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/session/force-sync (Admin exclusive)
+exports.adminForceSync = async (req, res, next) => {
+  try {
+    const { roomId } = req.body;
+    const normalized = (roomId || '').trim().toLowerCase();
+    const room = await JamRoom.findOne({ roomId: normalized });
+    if (!room || !room.currentPlayback) {
+      return res.status(404).json({ ok: false, error: 'Room or active playback not found' });
+    }
+    const serverTimeMs = Date.now();
+    const nextVersion = (room.currentPlayback.version || 0) + 1;
+    const syncedPlayback = {
+      ...room.currentPlayback,
+      version: nextVersion,
+      serverTime: serverTimeMs,
+      timestamp: new Date(),
+      action: 'seek',
+      scheduledStartTime: serverTimeMs + 100
+    };
+    await JamRoom.updateOne(
+      { roomId: normalized },
+      { $set: { currentPlayback: syncedPlayback, updatedAt: new Date() } }
+    );
+    req.app.get('io')?.to(`jam:${normalized}`).emit('jam:playback-sync', syncedPlayback);
+    res.json({ ok: true, currentPlayback: syncedPlayback, serverTime: serverTimeMs });
+  } catch (err) {
+    next(err);
+  }
+};

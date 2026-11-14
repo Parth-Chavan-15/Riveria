@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useJam } from '../context/JamContext';
 import { usePlayer } from '../hooks/usePlayer';
 import { useAuth } from '../hooks/useAuth';
@@ -30,6 +30,59 @@ export default function WebRTCSession() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [directorNotice, setDirectorNotice] = useState('');
+  const [adminRooms, setAdminRooms] = useState([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+
+  const fetchAdminRooms = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoadingRooms(true);
+    try {
+      const data = await apiRequest('/session/active-rooms');
+      if (data?.ok && Array.isArray(data.rooms)) {
+        setAdminRooms(data.rooms);
+      }
+    } catch {
+      // Degrades silently if offline or token refreshing
+    } finally {
+      setLoadingRooms(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchAdminRooms();
+      const interval = setInterval(fetchAdminRooms, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdmin, fetchAdminRooms]);
+
+  const handleAdminForceSync = async (targetRoomId) => {
+    try {
+      await apiRequest('/session/force-sync', {
+        method: 'POST',
+        body: JSON.stringify({ roomId: targetRoomId })
+      });
+      setDirectorNotice(`Forced acoustic sync pulse delivered across room "${targetRoomId}".`);
+      setTimeout(() => setDirectorNotice(''), 4000);
+      fetchAdminRooms();
+    } catch (e) {
+      setDirectorNotice(`Force sync failed: ${e.message}`);
+    }
+  };
+
+  const handleAdminTerminateRoom = async (targetRoomId) => {
+    if (!confirm(`Are you sure you want to terminate and purge room "${targetRoomId}"?`)) return;
+    try {
+      await apiRequest(`/session/rooms/${encodeURIComponent(targetRoomId)}`, {
+        method: 'DELETE'
+      });
+      setDirectorNotice(`Jam room "${targetRoomId}" terminated.`);
+      setTimeout(() => setDirectorNotice(''), 4000);
+      fetchAdminRooms();
+    } catch (e) {
+      setDirectorNotice(`Failed to terminate room: ${e.message}`);
+    }
+  };
 
   const handleForceSyncPeers = () => {
     if (!joinedRoom || !player.currentTrack) return;
@@ -64,7 +117,7 @@ export default function WebRTCSession() {
   };
 
   return (
-    <main className="flex-1 h-full overflow-y-auto px-4 pb-36 pt-24 md:ml-80 md:px-8 md:pt-28 text-white max-w-6xl scroll-smooth">
+    <main className="flex-1 h-full overflow-y-auto px-4 pb-52 pt-24 md:ml-80 md:px-8 md:pt-28 text-white max-w-6xl scroll-smooth">
       <div className="space-y-6">
         {/* Header Banner */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -89,6 +142,178 @@ export default function WebRTCSession() {
             </button>
           )}
         </div>
+
+        {/* System Architect Global Mesh Command Suite (Admin exclusive) */}
+        {isAdmin && (
+          <section className="glass-panel rounded-2xl p-6 border border-primary/20 bg-[#0d0c15]/90 shadow-2xl space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-primary text-2xl">hub</span>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                    System Architect Mesh Command Suite
+                    <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-[10px] font-mono uppercase tracking-wider">
+                      Live Telemetry & Governance
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Signal server clustering, TURN relay topologies, and room-level acoustic phase-lock control
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchAdminRooms}
+                  disabled={loadingRooms}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <span className={`material-symbols-outlined text-sm ${loadingRooms ? 'animate-spin' : ''}`}>sync</span>
+                  <span>Refresh Mesh</span>
+                </button>
+                <button
+                  onClick={handleDirectorIntercom}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/20 transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-sm">campaign</span>
+                  <span>Mesh Broadcast</span>
+                </button>
+              </div>
+            </div>
+
+            {directorNotice && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                <span>{directorNotice}</span>
+              </div>
+            )}
+
+            {/* Mesh Infrastructure Telemetry Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Signaling Protocol</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <div className="text-sm font-bold font-mono text-white">HTTP REST + Socket.io</div>
+                <div className="text-[10px] text-emerald-400 font-mono">800ms adaptive polling</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>ICE Traversal Nodes</span>
+                  <span className="w-2 h-2 rounded-full bg-primary" />
+                </div>
+                <div className="text-sm font-bold font-mono text-white">Google + OpenRelay</div>
+                <div className="text-[10px] text-primary font-mono">STUN (3) + TURN (UDP/TCP: 80, 443)</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>NTP Clock Calibration</span>
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                </div>
+                <div className="text-sm font-bold font-mono text-white">Cristian's Algorithm</div>
+                <div className="text-[10px] text-cyan-400 font-mono">&lt; 15ms skew compensation</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Phase-Lock Engine</span>
+                  <span className="w-2 h-2 rounded-full bg-secondary" />
+                </div>
+                <div className="text-sm font-bold font-mono text-white">Dynamic Rate Slew</div>
+                <div className="text-[10px] text-secondary font-mono">&plusmn;3.5% PLL rate slew</div>
+              </div>
+            </div>
+
+            {/* Active Jam Rooms Directory */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">meeting_room</span>
+                  Global Active Jam Rooms ({adminRooms.length})
+                </h4>
+                <span className="text-[11px] text-slate-500 font-mono">Cross-Origin Signal Bus</span>
+              </div>
+
+              {adminRooms.length === 0 ? (
+                <div className="p-6 rounded-xl bg-black/30 border border-white/5 text-center space-y-2">
+                  <span className="material-symbols-outlined text-3xl text-slate-600">sensors_off</span>
+                  <p className="text-xs text-slate-400">All mesh nodes idle &bull; No external rooms currently registered.</p>
+                  <button
+                    onClick={handleCreateRoom}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/30 transition-all mt-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">add</span>
+                    <span>Launch Director Room</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {adminRooms.map((room) => (
+                    <div
+                      key={room.roomId}
+                      className="p-4 rounded-xl bg-black/50 border border-white/10 hover:border-primary/40 transition-all space-y-3 shadow-lg"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span className="font-mono font-bold text-sm text-primary tracking-wider">{room.roomId}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] text-slate-300 font-mono">
+                            {room.peerCount} {room.peerCount === 1 ? 'Peer' : 'Peers'}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {room.playlistCount} tracks in queue
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs flex items-center justify-between">
+                        <div className="truncate pr-2">
+                          <div className="text-white font-medium truncate">
+                            {room.currentPlayback?.track?.title || 'No Active Track'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {room.currentPlayback?.track?.artist || 'Idle session'}
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                          room.currentPlayback?.isPlaying ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700/40 text-slate-400'
+                        }`}>
+                          {room.currentPlayback?.isPlaying ? 'Playing' : 'Paused'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => joinRoom(room.roomId)}
+                          className="flex-1 px-3 py-1.5 rounded-lg bg-primary text-black font-bold text-xs hover:scale-[1.02] active:scale-[0.98] transition-all text-center"
+                        >
+                          Join as Director
+                        </button>
+                        <button
+                          onClick={() => handleAdminForceSync(room.roomId)}
+                          title="Force Acoustic Phase-Lock Re-Sync"
+                          className="px-2.5 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/15 border border-white/10 text-xs transition-all"
+                        >
+                          <span className="material-symbols-outlined text-sm">sync</span>
+                        </button>
+                        <button
+                          onClick={() => handleAdminTerminateRoom(room.roomId)}
+                          title="Terminate Jam Room"
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 text-xs transition-all"
+                        >
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Room Join & Connected Console */}
         <section className="glass-panel rounded-2xl p-6 border border-white/10 shadow-2xl relative overflow-hidden bg-[#09090c]/85">
@@ -489,6 +714,9 @@ export default function WebRTCSession() {
             </div>
           </section>
         </div>
+
+        {/* Bottom clearance buffer so floating BottomPlayer never covers anything */}
+        <div className="h-28 w-full pointer-events-none" />
       </div>
     </main>
   );

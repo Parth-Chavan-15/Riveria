@@ -455,88 +455,90 @@ export default function WebRTCSession() {
           </p>
         </section>
 
-        {/* Acoustic Phase Alignment & Hardware Latency Calibration */}
-        <section className="glass-panel rounded-2xl p-5 border border-white/10 shadow-xl bg-[#09090c]/85 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-secondary text-lg">tune</span>
-              <h3 className="font-bold text-sm text-white">Acoustic Phase Alignment & Hardware Calibration</h3>
-              <span className="px-2 py-0.5 rounded-full bg-secondary/20 text-secondary border border-secondary/30 text-[10px] font-mono">
-                Sub-Millisecond Engine
+        {/* Acoustic Phase Alignment & Hardware Latency Calibration (Admin Director Only) */}
+        {isAdmin && (
+          <section className="glass-panel rounded-2xl p-5 border border-white/10 shadow-xl bg-[#09090c]/85 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-secondary text-lg">tune</span>
+                <h3 className="font-bold text-sm text-white">Acoustic Phase Alignment & Hardware Calibration</h3>
+                <span className="px-2 py-0.5 rounded-full bg-secondary/20 text-secondary border border-secondary/30 text-[10px] font-mono">
+                  Sub-Millisecond Engine
+                </span>
+              </div>
+              <span className="text-xs font-mono text-slate-400">
+                Current Offset: <strong className={player.acousticOffset === 0 ? 'text-white' : 'text-primary'}>{player.acousticOffset > 0 ? `+${player.acousticOffset}` : player.acousticOffset} ms</strong>
               </span>
             </div>
-            <span className="text-xs font-mono text-slate-400">
-              Current Offset: <strong className={player.acousticOffset === 0 ? 'text-white' : 'text-primary'}>{player.acousticOffset > 0 ? `+${player.acousticOffset}` : player.acousticOffset} ms</strong>
-            </span>
-          </div>
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Lag Compensation (Lead -60ms)</span>
-                <span>Exact Phase Lock (0ms)</span>
-                <span>Buffer Delay (+60ms)</span>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Lag Compensation (Lead -60ms)</span>
+                  <span>Exact Phase Lock (0ms)</span>
+                  <span>Buffer Delay (+60ms)</span>
+                </div>
+                <input
+                  type="range"
+                  min="-60"
+                  max="60"
+                  step="1"
+                  value={player.acousticOffset || 0}
+                  onChange={(e) => player.setAcousticOffset?.(Number(e.target.value))}
+                  className="w-full accent-primary h-1.5 rounded-full bg-white/10 cursor-pointer"
+                />
               </div>
-              <input
-                type="range"
-                min="-60"
-                max="60"
-                step="1"
-                value={player.acousticOffset || 0}
-                onChange={(e) => player.setAcousticOffset?.(Number(e.target.value))}
-                className="w-full accent-primary h-1.5 rounded-full bg-white/10 cursor-pointer"
-              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => player.setAcousticOffset?.(0)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                    player.acousticOffset === 0
+                      ? 'bg-primary/20 border-primary text-primary font-bold'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Studio (0ms)
+                </button>
+                <button
+                  onClick={() => player.setAcousticOffset?.(-25)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                    player.acousticOffset === -25
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Android (-25ms)
+                </button>
+                <button
+                  onClick={() => player.setAcousticOffset?.(-40)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                    player.acousticOffset === -40
+                      ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Cellular (-40ms)
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => player.setAcousticOffset?.(0)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
-                  player.acousticOffset === 0
-                    ? 'bg-primary/20 border-primary text-primary font-bold'
-                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                Studio (0ms)
-              </button>
-              <button
-                onClick={() => player.setAcousticOffset?.(-25)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
-                  player.acousticOffset === -25
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                Android (-25ms)
-              </button>
-              <button
-                onClick={() => player.setAcousticOffset?.(-40)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
-                  player.acousticOffset === -40
-                    ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold'
-                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                Cellular (-40ms)
-              </button>
+            <div className="text-[11px] text-slate-400 space-y-1">
+              <p>
+                &bull; <strong>Acoustic Alignment:</strong> Compensates for physical speaker distance and mobile operating system hardware DAC buffer delays. Eliminates comb-filtering when listening to multiple devices simultaneously.
+              </p>
+              {player.isAndroid ? (
+                <p className="text-amber-300/90 font-mono">
+                  &bull; <strong>Android Audio Policy Active:</strong> Mobile hardware operates in exclusive single-stream focus. Simultaneous multi-tab and multi-mesh parallel playback is fully supported on Desktop PCs.
+                </p>
+              ) : (
+                <p className="text-emerald-400/90 font-mono">
+                  &bull; <strong>Desktop PC Audio Pipeline Active:</strong> Concurrent multi-tab and multi-room parallel audio playback supported natively by system hardware mixer.
+                </p>
+              )}
             </div>
-          </div>
-
-          <div className="text-[11px] text-slate-400 space-y-1">
-            <p>
-              &bull; <strong>Acoustic Alignment:</strong> Compensates for physical speaker distance and mobile operating system hardware DAC buffer delays. Eliminates comb-filtering when listening to multiple devices simultaneously.
-            </p>
-            {player.isAndroid ? (
-              <p className="text-amber-300/90 font-mono">
-                &bull; <strong>Android Audio Policy Active:</strong> Mobile hardware operates in exclusive single-stream focus. Simultaneous multi-tab and multi-mesh parallel playback is fully supported on Desktop PCs.
-              </p>
-            ) : (
-              <p className="text-emerald-400/90 font-mono">
-                &bull; <strong>Desktop PC Audio Pipeline Active:</strong> Concurrent multi-tab and multi-room parallel audio playback supported natively by system hardware mixer.
-              </p>
-            )}
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* 2. COLLABORATIVE SESSION PLAYLIST */}
         {joinedRoom && (

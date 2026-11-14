@@ -96,6 +96,14 @@ export function PlayerProvider({ children }) {
   const lastTrackChangeTimeRef = useRef(0);
   const trackLoadingRef = useRef(null);
   const seekDebounceTimerRef = useRef(null);
+  const peerClockOffsetsRef = useRef(new Map());
+  const activeSyncSessionRef = useRef(null);
+
+  const setPeerClockOffset = useCallback((peerId, offset) => {
+    if (peerId && typeof offset === 'number' && Number.isFinite(offset)) {
+      peerClockOffsetsRef.current.set(peerId, offset);
+    }
+  }, []);
 
   // Minimum-RTT Weighted Precision Cristian/NTP Clock Skew Estimator
   const calibrateClock = useCallback((skew, rtt = 50) => {
@@ -148,8 +156,9 @@ export function PlayerProvider({ children }) {
       return;
     }
 
-    // Zone 3: Hard Phase-Snap (> 1.2s): Only snap on true human seeks or massive desyncs (> 1200ms)
-    if (absDrift > 1.2) {
+    // Zone 3: Perceptible Acoustic Echo (> 45ms): Instant Phase Snap!
+    // In room acoustics, > 35-45ms creates an audible double-hit/echo. Snap immediately to lock phase!
+    if (absDrift > 0.045) {
       audio.currentTime = effectiveRemotePos;
       setPosition(effectiveRemotePos);
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
@@ -157,24 +166,24 @@ export function PlayerProvider({ children }) {
       return;
     }
 
-    // Zone 2: Continuous Precision Dynamic Proportional Slew (4ms - 1200ms):
+    // Zone 2: Continuous Precision Micro-Slew (4ms - 45ms):
     // Smooth proportional frequency slew without buffer purges or audio clicks
     const now = Date.now();
-    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 180)) {
+    if (!lastRateNudgeTimeRef.current || (now - lastRateNudgeTimeRef.current > 100)) {
       lastRateNudgeTimeRef.current = now;
       if (rateNudgeTimerRef.current) clearTimeout(rateNudgeTimerRef.current);
 
       const sign = Math.sign(drift);
-      // Proportional magnitude scaled for rapid 1-second phase lock
-      const magnitude = Math.min(0.045, Math.max(0.012, absDrift * 0.18));
+      // Scaled proportional gain: a 20ms drift gives ~0.018 (1.8% rate tweak), locking within 800ms
+      const magnitude = Math.min(0.035, Math.max(0.008, absDrift * 0.9));
       const rateNudge = sign * magnitude;
       audio.playbackRate = 1.0 + rateNudge;
 
       rateNudgeTimerRef.current = setTimeout(() => {
-        if (audioRef.current && Math.abs(effectiveRemotePos - audioRef.current.currentTime) <= 0.005) {
+        if (audioRef.current && Math.abs(effectiveRemotePos - audioRef.current.currentTime) <= 0.004) {
           audioRef.current.playbackRate = 1.0;
         }
-      }, 550);
+      }, 300);
     }
   }, []);
 
@@ -240,8 +249,29 @@ export function PlayerProvider({ children }) {
         }, 2000);
       }
     };
-    const onClearWatchdog = () => {
+    const onPlaying = () => {
       if (stallWatchdog) clearTimeout(stallWatchdog);
+      setIsAutoplayBlocked(false);
+
+      // Instant Acoustic Phase Lock on Playback Start:
+      // When audio officially begins emitting sound after async buffering/decoding,
+      // snap immediately if buffering delay caused a phase offset relative to the host!
+      const syncSession = activeSyncSessionRef.current;
+      if (syncSession && syncSession.startWallTime && isPlayingRef.current && audioRef.current) {
+        const clientNow = Date.now();
+        const peerOffset = (syncSession.fromPeerId && peerClockOffsetsRef.current.get(syncSession.fromPeerId)) ?? clockSkewRef.current;
+        const senderNow = clientNow + peerOffset;
+        const elapsedSinceSenderStart = Math.max(0, (senderNow - syncSession.startWallTime) / 1000);
+        const effectiveHostPos = (syncSession.initialPosition || 0) + elapsedSinceSenderStart + (acousticOffsetRef.current / 1000);
+
+        // If local currentTime is lagging by more than 30ms due to async media loading/buffer/DAC startup:
+        if (Math.abs(audioRef.current.currentTime - effectiveHostPos) > 0.030) {
+          try {
+            audioRef.current.currentTime = effectiveHostPos;
+            setPosition(effectiveHostPos);
+          } catch {}
+        }
+      }
     };
 
     const handleOnline = () => {
@@ -290,7 +320,7 @@ export function PlayerProvider({ children }) {
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
-    audio.addEventListener('playing', onClearWatchdog);
+    audio.addEventListener('playing', onPlaying);
     audio.addEventListener('waiting', onWaitingOrStalled);
     audio.addEventListener('stalled', onWaitingOrStalled);
     audio.addEventListener('pause', onPause);
@@ -307,7 +337,7 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('play', onPlay);
-      audio.removeEventListener('playing', onClearWatchdog);
+      audio.removeEventListener('playing', onPlaying);
       audio.removeEventListener('waiting', onWaitingOrStalled);
       audio.removeEventListener('stalled', onWaitingOrStalled);
       audio.removeEventListener('pause', onPause);
@@ -375,6 +405,7 @@ export function PlayerProvider({ children }) {
 
     // Broadcast track change immediately so peers start buffering simultaneously
     if (!fromSync) {
+      activeSyncSessionRef.current = null;
       window.dispatchEvent(
         new CustomEvent('reveria:jam-action', {
           detail: {
@@ -674,19 +705,32 @@ export function PlayerProvider({ children }) {
 
     const audio = audioRef.current;
     const isTargetPlaying = Boolean(remoteIsPlaying);
-    const nowServerEst = clientNow + clockSkewRef.current;
+    const peerOffset = (payload.fromPeerId && peerClockOffsetsRef.current.get(payload.fromPeerId)) ?? clockSkewRef.current;
+    const nowServerEst = clientNow + peerOffset;
+
+    if (isTargetPlaying) {
+      activeSyncSessionRef.current = {
+        startWallTime: payload.startWallTime || clientNow,
+        initialPosition: Number(remotePosition) || 0,
+        fromPeerId: payload.fromPeerId || null,
+        trackId: targetId
+      };
+    } else {
+      activeSyncSessionRef.current = null;
+    }
+
     const currentId = currentTrackRef.current?._id || currentTrackRef.current?.id || currentTrackRef.current?.localUrl;
     const isDifferentTrack = Boolean(currentId && targetId && currentId !== targetId) || (!currentId && Boolean(targetId)) || !audio.src;
     const isExplicitTrackChange = action === 'track_change' || isDifferentTrack || (Number(remotePosition) === 0);
     const isExplicitSeek = action === 'seek';
 
-    // 2. Compute target position: track changes always start at 0s, seeks jump directly
+    // 2. Compute target position: track changes calculate elapsed since sender startWallTime
     let targetPos = 0;
     if (isExplicitTrackChange) {
       targetPos = 0;
       if (payload.startWallTime && isTargetPlaying) {
         const rawElapsed = Math.max(0, (nowServerEst - payload.startWallTime) / 1000);
-        if (rawElapsed > 0 && rawElapsed < 10) {
+        if (rawElapsed > 0 && rawElapsed < 15) {
           targetPos = rawElapsed;
         }
       }
@@ -921,6 +965,7 @@ export function PlayerProvider({ children }) {
     syncPlayback,
     resetRoomVersion,
     calibrateClock,
+    setPeerClockOffset,
     correctDrift,
     isAutoplayBlocked,
     isAndroid: isAndroidDevice,
@@ -962,6 +1007,7 @@ export function PlayerProvider({ children }) {
     syncPlayback,
     resetRoomVersion,
     calibrateClock,
+    setPeerClockOffset,
     correctDrift
   ]);
 

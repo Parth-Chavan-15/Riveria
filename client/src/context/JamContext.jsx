@@ -324,6 +324,7 @@ export function JamProvider({ children }) {
 
   const p2pLatencyRef = useRef(new Map());
   const p2pOffsetRef = useRef(new Map());
+  const p2pNtpSamplesRef = useRef(new Map());
 
   // Stream local audio file bytes across WebRTC DataChannel directly to connected peers with flow control
   const streamLocalTrackToPeers = useCallback(async (track) => {
@@ -402,8 +403,18 @@ export function JamProvider({ children }) {
           try { channel.send(JSON.stringify({ type: 'PLAYLIST_SYNC', playlist: collabPlaylistRef.current })); } catch {}
         }
 
-        // Send immediate P2P ping to establish sub-5ms latency baseline
+        // Burst 3 micro-NTP pings for instant clock calibration within 250ms
         try { channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() })); } catch {}
+        setTimeout(() => {
+          if (channel?.readyState === 'open') {
+            try { channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() })); } catch {}
+          }
+        }, 120);
+        setTimeout(() => {
+          if (channel?.readyState === 'open') {
+            try { channel.send(JSON.stringify({ type: 'P2P_PING', t1: Date.now() })); } catch {}
+          }
+        }, 250);
       };
 
       channel.onmessage = async (event) => {
@@ -430,12 +441,13 @@ export function JamProvider({ children }) {
           } else if (packet.type === 'PLAYBACK_HEARTBEAT') {
             const currentTrackId = playerRef.current?.currentTrack?._id || playerRef.current?.currentTrack?.id;
             if (packet.trackId === currentTrackId && playerRef.current?.isPlaying && typeof packet.position === 'number') {
-              const p2pRtt = p2pLatencyRef.current.get(peerId) || 12;
               const p2pOffset = p2pOffsetRef.current?.get(peerId) || 0;
-              // Precise transit delay compensation (half RTT in seconds)
-              const transitSeconds = Math.max(0, p2pRtt / 2000);
-              const adjustedPos = packet.position + transitSeconds;
-              playerRef.current?.correctDrift?.(adjustedPos);
+              const now = Date.now();
+              const sentAt = Number(packet.sentAt || packet.timestamp) || now;
+              // True elapsed seconds on sender since sender sampled position:
+              const elapsedSinceSend = Math.max(0, (now + p2pOffset - sentAt) / 1000);
+              const currentSenderPos = packet.position + (packet.isPlaying ? elapsedSinceSend : 0);
+              playerRef.current?.correctDrift?.(currentSenderPos);
             }
           } else if (packet.type === 'START_AUDIO_TRANSFER') {
             activeIncomingTransferRef.current = {
@@ -496,10 +508,12 @@ export function JamProvider({ children }) {
           } else if (packet.type === 'P2P_PING') {
             if (channel?.readyState === 'open') {
               try {
+                const t2 = Date.now();
                 channel.send(JSON.stringify({
                   type: 'P2P_PONG',
                   t1: packet.t1,
-                  t2: Date.now()
+                  t2,
+                  t3: Date.now()
                 }));
               } catch {}
             }
@@ -507,11 +521,42 @@ export function JamProvider({ children }) {
             const t4 = Date.now();
             const t1 = Number(packet.t1) || t4;
             const t2 = Number(packet.t2) || t4;
-            const p2pRtt = Math.max(1, t4 - t1);
-            p2pLatencyRef.current.set(peerId, p2pRtt);
-            // Symmetric NTP clock offset: (t2 - t1) - (p2pRtt / 2)
-            const p2pOffset = (t2 - t1) - (p2pRtt / 2);
-            p2pOffsetRef.current.set(peerId, p2pOffset);
+            const t3 = Number(packet.t3) || t2;
+            const p2pRtt = Math.max(1, (t4 - t1) - (t3 - t2));
+            // Standard RFC 5905 NTP clock offset formula:
+            const p2pOffset = ((t2 - t1) + (t3 - t4)) / 2;
+
+            // Update sample filter
+            const samples = p2pNtpSamplesRef.current.get(peerId) || [];
+            samples.push({ offset: p2pOffset, rtt: p2pRtt, time: t4 });
+            if (samples.length > 8) samples.shift();
+            p2pNtpSamplesRef.current.set(peerId, samples);
+
+            // Jitter-free filter: take lowest 50% RTT samples (least network queue delay)
+            const sorted = [...samples].sort((a, b) => a.rtt - b.rtt);
+            const best = sorted.slice(0, Math.max(1, Math.ceil(sorted.length * 0.5)));
+            const avgOffset = best.reduce((acc, s) => acc + s.offset, 0) / best.length;
+
+            p2pLatencyRef.current.set(peerId, best[0].rtt);
+            p2pOffsetRef.current.set(peerId, avgOffset);
+            playerRef.current?.setPeerClockOffset?.(peerId, avgOffset);
+
+            // Inform the remote peer of their reciprocal offset immediately:
+            if (channel?.readyState === 'open') {
+              try {
+                channel.send(JSON.stringify({
+                  type: 'NTP_CALIBRATED',
+                  offset: -avgOffset,
+                  rtt: best[0].rtt
+                }));
+              } catch {}
+            }
+          } else if (packet.type === 'NTP_CALIBRATED') {
+            if (typeof packet.offset === 'number' && Number.isFinite(packet.offset)) {
+              p2pOffsetRef.current.set(peerId, packet.offset);
+              if (packet.rtt) p2pLatencyRef.current.set(peerId, packet.rtt);
+              playerRef.current?.setPeerClockOffset?.(peerId, packet.offset);
+            }
           }
         } catch {}
       };
@@ -831,9 +876,11 @@ export function JamProvider({ children }) {
 
       const heartbeat = JSON.stringify({
         type: 'PLAYBACK_HEARTBEAT',
+        fromPeerId: myPeerIdRef.current,
         trackId,
         position: currentTime,
-        timestamp: Date.now()
+        sentAt: Date.now(),
+        isPlaying: Boolean(playerRef.current.isPlaying)
       });
 
       peersRef.current.forEach(({ channel }) => {
@@ -845,7 +892,7 @@ export function JamProvider({ children }) {
       });
     };
 
-    const stopHeartbeat = createWorkerTimer(sendHeartbeat, 500);
+    const stopHeartbeat = createWorkerTimer(sendHeartbeat, 250);
     return () => {
       stopHeartbeat();
     };
@@ -862,7 +909,7 @@ export function JamProvider({ children }) {
         }
       });
     };
-    const stopPing = createWorkerTimer(pingPeers, 1500);
+    const stopPing = createWorkerTimer(pingPeers, 1200);
     return () => stopPing();
   }, [joinedRoom]);
 

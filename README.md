@@ -10,13 +10,14 @@
 [![Live Production](https://img.shields.io/badge/Production-riveria--umber.vercel.app-d0bcff?style=for-the-badge&logo=vercel&logoColor=black)](https://riveria-umber.vercel.app)
 [![React 19](https://img.shields.io/badge/React-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![Node.js 22](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Web Audio API](https://img.shields.io/badge/Web_Audio_API-32--Bit_Float_DSP-8B5CF6?style=for-the-badge&logo=soundcharts&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
 [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_Mesh-FF6C37?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org)
 [![RFC 9110](https://img.shields.io/badge/RFC_9110-Partial_Content-9333EA?style=for-the-badge)](https://httpwg.org/specs/rfc9110.html)
 [![MongoDB Atlas](https://img.shields.io/badge/MongoDB-Atlas_GridFS-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com)
 
 <br />
 
-<img src="client/public/landing-preview.png" alt="Riveria Listening Chamber" width="920" style="border-radius: 18px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 80px rgba(0,0,0,0.85);" />
+<img src="client/public/landing-preview.png" alt="Riveria High-Fidelity Audio Experience" width="100%" style="max-width: 960px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 80px rgba(0,0,0,0.85);" />
 
 </div>
 
@@ -38,18 +39,21 @@ Whether you are seeking solace in late-night listening or syncing a song with a 
 Hear your music the way master recording engineers intended. Riveria runs a high-resolution 32-bit floating-point audio engine with a **Holographic 3D Spatializer**. Using psychoacoustic Mid-Side separation, it expands the acoustic soundstage beyond flat stereo into a wide, immersive chamber—delivering clarity and warmth without the phase distortion of traditional virtual surround.
 
 #### 2. Tactile 5-Band Equalizer & Dynamic Curve
-Shape your sound with tactile, responsive vertical faders that react to your touch. Watch the dynamic frequency response curve sculpt itself in real time as you adjust Sub-Bass, Punch, Vocal Mids, Presence, and Air. Switch between curated studio profiles (*Bass Presence*, *Vocal Radiance*, *Acoustic Warmth*) or carve your own signature tone. Every preference is automatically saved to your cloud account so your acoustic profile stays with you across all your devices.
+Shape your sound with tactile, responsive vertical faders that react to your touch. Watch the dynamic frequency response curve sculpt itself in real time as you adjust Sub-Bass, Punch, Vocal Mids, Presence, and Air. Switch between curated studio profiles (*Studio Reference*, *Bass Presence*, *Vocal Radiance*, *Electronic & Club*, *Acoustic Warmth*) or carve your own signature tone. Every preference is automatically saved to your cloud account so your acoustic profile stays with you across all your devices.
 
-#### 3. WebRTC Group Jam — Listen Together in Real Time
-Music was never meant to be experienced alone. Riveria lets you spin up a private WebRTC Listening Jam and invite friends with a single link. Over direct encrypted peer-to-peer data channels, playback stays in telepathic sync: when you pause, scrub to a bridge, or change a track, every connected device moves at the exact same millisecond—with no server in the middle delaying the sound.
+#### 3. WebRTC Group Jam — Telepathic Synchronized Listening
+Music was never meant to be experienced alone. Riveria lets you spin up a private WebRTC Listening Jam and invite friends with a single link. Over direct encrypted peer-to-peer data channels, playback stays in telepathic sync: when you pause, scrub to a bridge, or change a track, every connected device moves at the exact same millisecond—with no server in the middle delaying the sound. Powered by bidirectional 4-timestamp micro-NTP time synchronization and a continuous Phase-Locked Loop (PLL) engine, playback holds within sub-millisecond phase accuracy (< 4 ms).
 
-#### 4. Sovereign Local Vault (Zero Server Uploads)
+#### 4. Acoustic Phase Alignment & Hardware Calibration
+Eliminate comb-filtering and phase cancellation when playing across multiple physical speakers in the same room. Riveria includes a dedicated hardware calibration engine that compensates for physical speaker distance and operating-system DAC buffer latencies (including Android's native audio track lead and cellular delays) with customizable millisecond lead and lag offsets.
+
+#### 5. Sovereign Local Vault (Zero Server Uploads)
 Your private collection of lossless FLACs, WAVs, or rare MP3s stays truly private. Mount local audio files directly from your computer or phone. They play entirely inside browser memory via ephemeral pointers. Zero bytes ever leave your device, meaning you can enjoy your rarest tracks inside Riveria's audiophile pipeline with absolute privacy.
 
-#### 5. Seamless Edge Streaming & Studio Ingest
+#### 6. Seamless Edge Streaming & Studio Ingest
 Cloud tracks stream with instant, zero-buffering scrubbing via RFC 9110 byte-range slicing. When new studio masters are introduced, Riveria’s chunked ingest processes high-resolution audio into MongoDB GridFS while automatically extracting embedded ID3 cover art and track metadata.
 
-#### 6. System Architect Command Suite
+#### 7. System Architect Command Suite
 For administrators, Riveria provides an executive control room: real-time telemetry gauges showing active WebRTC meshes, memory heap diagnostics, live catalog curation, and user role management.
 
 ---
@@ -69,36 +73,40 @@ flowchart TD
     classDef storage fill:#451a03,stroke:#fbbf24,stroke-width:2px,color:#ffffff
 
     subgraph ClientChamber ["Client Chamber (React 19 & Web Audio DSP)"]
-        UI["Obsidian Interface\n(Discovery • Equalizer • Group Jam)"]:::client
-        DSPStage["32-Bit Floating DSP Stage\n(Mid-Side Spatializer & 5-Band Biquad)"]:::dsp
-        LocalVault["Sovereign Memory Vault\n(0-Server Uploads • In-Memory Blobs)"]:::client
-        PLLSync["Phase-Locked Loop Engine\n(Sub-20ms Clock Synchronization)"]:::p2p
+        UI["Obsidian Interface<br/>(Discovery • Equalizer • Group Jam)"]:::client
+        DSPStage["32-Bit Floating DSP Stage<br/>(Mid-Side Spatializer & 5-Band Biquad)"]:::dsp
+        LocalVault["Sovereign Memory Vault<br/>(Zero-Server Uploads • In-Memory Blobs)"]:::client
+        PLLSync["Phase-Locked Loop Engine<br/>(Sub-Millisecond Micro-NTP Clock Sync)"]:::p2p
+        HardwareCal["Hardware Calibration Stage<br/>(DAC Latency & Acoustic Lead/Lag)"]:::dsp
     end
 
     subgraph MeshNetwork ["WebRTC Peer-to-Peer Mesh"]
-        SCTP["Direct Data Channel Mesh\n(Instant Seek & Playhead Lock)"]:::p2p
-        RemotePeer["Remote Peer Device"]:::p2p
+        SCTP["Direct SCTP Data Channels<br/>(Instant Seek & Playhead Lock)"]:::p2p
+        RemotePeer["Remote Peer Devices<br/>(Synchronized Playback Nodes)"]:::p2p
     end
 
     subgraph EdgeLayer ["Global Edge Infrastructure (Vercel)"]
-        VercelCDN["Edge Delivery Gateway\n(RFC 9110 Byte-Range Slicing)"]:::edge
-        SecurityGate["JWT Auth & Role Governance\n(System Architect Gate)"]:::edge
+        VercelCDN["Edge Delivery Gateway<br/>(RFC 9110 Byte-Range Slicing)"]:::edge
+        SecurityGate["JWT Auth & Role Governance<br/>(System Architect Gate)"]:::edge
     end
 
     subgraph CloudVault ["Cloud Core (MongoDB Atlas)"]
-        GridFSStore["GridFS Lossless Audio Chunks\n(Studio Audio Storage)"]:::storage
-        UserStore["User Profiles & Preferences\n(EQ Curves & Saved Settings)"]:::storage
+        GridFSStore["GridFS Lossless Audio Chunks<br/>(512KB Chunks • Stream Vault)"]:::storage
+        UserStore["User Profiles & Preferences<br/>(EQ Curves & Saved Settings)"]:::storage
+        TTLSignals["Ephemeral Signal Collections<br/>(TTL: 120s Auto-Eviction)"]:::storage
     end
 
     UI --> DSPStage
     UI --> LocalVault
+    DSPStage <--> HardwareCal
     DSPStage <--> PLLSync
     PLLSync <-->|Encrypted Direct P2P| SCTP
     SCTP <--> RemotePeer
-    DSPStage -->|HTTP 206 Micro-Slices| VercelCDN
+    DSPStage -->|HTTP 206 Byte Ranges| VercelCDN
     VercelCDN <--> SecurityGate
     SecurityGate <--> UserStore
     VercelCDN <--> GridFSStore
+    SecurityGate <--> TTLSignals
 ```
 
 </details>

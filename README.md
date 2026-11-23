@@ -1,13 +1,12 @@
 <div align="center">
 
-# R I V E R I A
-### *Where sound dissolves into memory.*
+# Riveria Music Engine
 
-**A sovereign acoustic sanctuary, 32-bit floating-point DSP engine, and real-time listening mesh.**
+**An audiophile web streaming platform featuring real-time WebRTC synchronized group playback, browser-native 32-bit floating-point studio mastering, and private in-memory local audio streaming.**
 
 <br />
 
-[![Live Production](https://img.shields.io/badge/Production-riveria--umber.vercel.app-d0bcff?style=for-the-badge&logo=vercel&logoColor=black)](https://riveria-umber.vercel.app)
+[![Live Production](https://img.shields.io/badge/Production-riveria--umber.vercel.app-7C3AED?style=for-the-badge&logo=vercel&logoColor=white)](https://riveria-umber.vercel.app)
 [![React 19](https://img.shields.io/badge/React-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![Node.js 22](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Web Audio API](https://img.shields.io/badge/Web_Audio_API-32--Bit_Float_DSP-8B5CF6?style=for-the-badge&logo=soundcharts&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
@@ -17,51 +16,90 @@
 
 <br />
 
-<img src="client/public/landing-preview.png" alt="Riveria High-Fidelity Audio Experience" width="100%" style="max-width: 960px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 80px rgba(0,0,0,0.85);" />
+<a href="https://riveria-umber.vercel.app">
+  <img src="docs/images/riveria-preview.png" alt="Riveria Music Engine Application Preview" width="100%" style="max-width: 960px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 50px rgba(0,0,0,0.8);" />
+</a>
 
 </div>
 
 ---
 
-### ✦ The Prologue: Music, Reclaimed
+## Overview
 
-Most modern music apps treat sound like an algorithmic commodity—buried underneath endless recommendation feeds, behavioral trackers, visual clutter, and dynamically squashed audio.
+Most mainstream streaming platforms compress audio into lossy formats, enforce algorithmic recommendation clutter, and suffer from noticeable playback delays when multiple devices try to play together in the same room.
 
-**Riveria** was built to restore what was lost: the feeling of sitting in a quiet room, putting on a record, and losing yourself in pure sound. It is a sovereign listening haven that combines studio-grade acoustic processing with the warmth of shared listening—free from advertisements, tracking, or commercial algorithms.
+**Riveria** is a modern full-stack music engine engineered from the ground up to solve these problems:
 
----
-
-### ✦ What You Can Experience in Riveria
-
-Whether you are seeking solace in late-night listening or syncing a song with a friend across the world, Riveria is designed to feel effortless, intimate, and alive:
-
-#### 1. Holographic 32-Bit Floating DSP Stage
-Hear your music the way master recording engineers intended. Riveria runs a high-resolution 32-bit floating-point audio engine with a **Holographic 3D Spatializer**. Using psychoacoustic Mid-Side separation, it expands the acoustic soundstage beyond flat stereo into a wide, immersive chamber—delivering clarity and warmth without the phase distortion of traditional virtual surround.
-
-#### 2. Tactile 5-Band Equalizer & Dynamic Curve
-Shape your sound with tactile, responsive vertical faders that react to your touch. Watch the dynamic frequency response curve sculpt itself in real time as you adjust Sub-Bass, Punch, Vocal Mids, Presence, and Air. Switch between curated studio profiles (*Studio Reference*, *Bass Presence*, *Vocal Radiance*, *Electronic & Club*, *Acoustic Warmth*) or carve your own signature tone. Every preference is automatically saved to your cloud account so your acoustic profile stays with you across all your devices.
-
-#### 3. WebRTC Group Jam — Telepathic Synchronized Listening
-Music was never meant to be experienced alone. Riveria lets you spin up a private WebRTC Listening Jam and invite friends with a single link. Over direct encrypted peer-to-peer data channels, playback stays in telepathic sync: when you pause, scrub to a bridge, or change a track, every connected device moves at the exact same millisecond—with no server in the middle delaying the sound. Powered by bidirectional 4-timestamp micro-NTP time synchronization and a continuous Phase-Locked Loop (PLL) engine, playback holds within sub-millisecond phase accuracy (< 4 ms).
-
-#### 4. Acoustic Phase Alignment & Hardware Calibration
-Eliminate comb-filtering and phase cancellation when playing across multiple physical speakers in the same room. Riveria includes a dedicated hardware calibration engine that compensates for physical speaker distance and operating-system DAC buffer latencies (including Android's native audio track lead and cellular delays) with customizable millisecond lead and lag offsets.
-
-#### 5. Sovereign Local Vault (Zero Server Uploads)
-Your private collection of lossless FLACs, WAVs, or rare MP3s stays truly private. Mount local audio files directly from your computer or phone. They play entirely inside browser memory via ephemeral pointers. Zero bytes ever leave your device, meaning you can enjoy your rarest tracks inside Riveria's audiophile pipeline with absolute privacy.
-
-#### 6. Seamless Edge Streaming & Studio Ingest
-Cloud tracks stream with instant, zero-buffering scrubbing via RFC 9110 byte-range slicing. When new studio masters are introduced, Riveria’s chunked ingest processes high-resolution audio into MongoDB GridFS while automatically extracting embedded ID3 cover art and track metadata.
-
-#### 7. System Architect Command Suite
-For administrators, Riveria provides an executive control room: real-time telemetry gauges showing active WebRTC meshes, memory heap diagnostics, live catalog curation, and user role management.
+1. **High-Fidelity Cloud Streaming:** Streams lossless audio files (FLAC, MP3, WAV) on demand via RFC 9110 HTTP Range requests with an in-memory chunk cache for instant, zero-delay scrubbing.
+2. **Sub-Millisecond Synced Listening (WebRTC Jam):** Allows multiple listeners on different devices to listen to the exact same audio stream in tight acoustic synchronization (< 4 ms) using peer-to-peer data channels and a custom Phase-Locked Loop (PLL) engine.
+3. **Studio-Grade DSP Equalizer:** Operates a browser-native 32-bit floating-point Web Audio API mastering chain with a 5-band parametric equalizer, Mid-Side 3D spatializer, dynamic volume normalizer, and real-time FFT spectrum visualizer.
+4. **Zero-Server-Upload Local Vault:** Mounts personal audio files straight into browser memory via Blob URLs. Songs play entirely inside client RAM with zero server uploads and can be streamed peer-to-peer to friends over encrypted WebRTC channels.
+5. **Architect Control Room:** Gives administrators a full management suite for uploading cloud tracks, inspecting real-time system telemetry, and governing user permissions.
 
 ---
 
-### ✦ System Architecture
+## Core Features
+
+### 1. High-Fidelity Cloud Streaming (RFC 9110 & GridFS)
+* **Byte-Range Audio Delivery:** Uses RFC 9110 HTTP 206 Partial Content range requests (`bytes=start-end`) to stream audio in discrete chunks.
+* **Instant Scrubbing:** Jump anywhere in a song with zero rebuffering lag, backed by an in-memory LRU audio cache delivering sub-5 ms initial chunk response times.
+* **Dual-Bucket Storage:** Audio files are partitioned into 512 KB chunks in MongoDB GridFS (`audio_library`), while artwork is stored in 256 KB chunks (`image_library`) to ensure low database latency.
+* **Magic-Byte Security:** Every uploaded track is inspected at the binary header level (`ID3`/`0xFF 0xFB` for MP3, `fLaC` for FLAC, `RIFF` for WAV) before storage, preventing malicious or corrupted files.
+
+### 2. 32-Bit Web Audio API Studio Mastering Chain
+* **5-Band Parametric Equalizer:** Control audio frequencies with high-precision faders:
+  * **60 Hz (Sub-Bass):** Low-shelf filter for deep low-end rumble and bass fullness.
+  * **250 Hz (Punch / Low-Mid):** Peaking filter for drum punch and warmth.
+  * **1 kHz (Vocal Midrange):** Peaking filter for vocal clarity and instrument presence.
+  * **4 kHz (Presence / Treble):** High-shelf filter for crisp articulation and attack.
+  * **16 kHz (Air):** High-shelf filter for ultra-high harmonic sparkle.
+* **Curated Studio Presets:** Switch instantly between *Studio Reference (Flat)*, *Bass Presence (+6dB)*, *Vocal Radiance*, *Electronic & Club*, and *Acoustic Warmth*.
+* **Dynamic Response Curve:** An interactive SVG curve updates in real time to visually depict the frequency gain modifications across all five bands.
+* **Mid-Side 3D Holographic Spatializer:** Deconstructs the stereo soundstage into Mid and Side signals using an 18 ms Haas matrix delay, creating an expansive spatial field without mono phase cancellation.
+* **Dynamic Normalizer & Peak Limiter:** Built-in `DynamicsCompressorNode` (-24 dB threshold, 4:1 ratio) prevents clipping and normalizes volume between loud and quiet tracks.
+* **2048-Bin FFT Spectrum Visualizer:** Real-time frequency analysis rendered to smooth UI waveform monitors.
+* **Cloud Preference Persistence:** Equalizer curves and audio preferences automatically save to your account in MongoDB and sync across all your devices.
+
+### 3. WebRTC Listening Jam (Real-Time Synchronized Playback)
+* **Direct Peer-to-Peer Mesh:** Connect with friends using 6-character room codes. Connected devices form direct, encrypted SCTP DataChannel links (`jam_sync`), bypassing media relays.
+* **Bidirectional 4-Timestamp Micro-NTP:** Continuously calculates network Round-Trip Time (RTT) and clock offset ($\theta$) between the host and listener devices, filtering out high-jitter network spikes.
+* **Three-Zone Dynamic Phase-Locked Loop (PLL):**
+  * **Zone 0 ($\le 4\text{ ms}$):** Bit-perfect phase lock. Zero adjustments required.
+  * **Zone 1 ($4\text{ ms} < \Delta \le 45\text{ ms}$):** Dynamic micro-slew rate modulation ($0.985\times - 1.015\times$) that smoothly guides playback back into phase without clicks or audible pitch warble.
+  * **Zone 2 ($> 45\text{ ms}$):** Instant phase snap directly aligning `currentTime` to the host anchor.
+* **Audio Buffering Catch-Up:** Uses the native `onPlaying` browser event to detect OS audio decoder startup delay, guaranteeing that playback timers only begin when physical sound leaves the DAC.
+* **Dual-Path Signaling with Auto-Failover:** Real-time Socket.io WebSockets are used for low-latency handshakes, backed by an automatic HTTP REST polling fallback using MongoDB TTL collections (`jam_signals` expires in 120s; `jam_rooms` expires in 3600s) to reliably traverse strict corporate firewalls.
+
+### 4. Acoustic Phase Alignment & Hardware Calibration
+* **Speaker Distance & DAC Compensation:** In-room multi-device playback can create destructive comb filtering when physical devices have different internal audio buffer delays.
+* **Calibration Slider:** Allows listeners to set custom lead/lag compensation offsets ($\Delta_{hw}$ from -60 ms to +60 ms).
+* **Built-in Presets:**
+  * **Studio Reference (0 ms):** Direct low-latency line-out and desktop drivers.
+  * **Android AudioTrack (-25 ms):** Compensates for mobile OS mixer buffer latency.
+  * **Cellular Network (-40 ms):** Compensates for mobile carrier transit jitter.
+
+### 5. Local Sync Hub (Zero-Server-Upload Privacy)
+* **In-Memory Memory Sandboxing:** Drag and drop local audio files (MP3, FLAC, WAV) directly into the app. They mount as in-memory Blob URLs (`URL.createObjectURL`).
+* **Absolute Privacy:** Audio bytes live strictly inside the browser's volatile RAM. Zero bytes are ever uploaded, saved, or logged to the backend server.
+* **P2P Local Track Sharing:** Play local tracks in a WebRTC Jam session by automatically slicing the memory blob into 64 KB binary packets and streaming them directly over encrypted peer data channels to friends.
+* **Optional Cloud Ingest:** System administrators can promote any local track to the permanent cloud catalog with a single click.
+
+### 6. System Architect Command Suite (Admin Control)
+* **Role-Based Access Control (RBAC):** Clean security boundary separating standard `listener` accounts from administrative `admin` accounts.
+* **Master Catalog Management:** Upload new cloud audio tracks with automatic extraction of embedded ID3 metadata (title, artist, duration) and album artwork, edit track information, and delete assets.
+* **Engine Console Telemetry:** Real-time dashboard showing active WebRTC meshes, memory heap allocations, server uptime, and streaming load.
+* **User Governance:** Inspect registered accounts and promote or demote user permissions in real time.
+
+### 7. Multi-Account & Multi-Tab Isolation
+* **Independent Sessions on One Device:** Prioritizes `sessionStorage` over `localStorage` combined with an ephemeral tab nonce (`tabId`).
+* **Concurrent Testing:** An administrator and a listener account can run simultaneously in two separate tabs of the same browser window without session crosstalk or WebRTC peer ID collisions.
+
+---
+
+## System Architecture
 
 <details>
-<summary><b>✦ Click here to view the System Architecture Diagram</b></summary>
+<summary><b>✦ Click here to expand the System Architecture Diagram</b></summary>
 <br />
 
 ```mermaid
@@ -72,28 +110,30 @@ flowchart TD
     classDef edge fill:#0c4a6e,stroke:#38bdf8,stroke-width:2px,color:#ffffff
     classDef storage fill:#451a03,stroke:#fbbf24,stroke-width:2px,color:#ffffff
 
-    subgraph ClientChamber ["Client Chamber (React 19 & Web Audio DSP)"]
-        UI["Obsidian Interface<br/>(Discovery • Equalizer • Group Jam)"]:::client
-        DSPStage["32-Bit Floating DSP Stage<br/>(Mid-Side Spatializer & 5-Band Biquad)"]:::dsp
-        LocalVault["Sovereign Memory Vault<br/>(Zero-Server Uploads • In-Memory Blobs)"]:::client
-        PLLSync["Phase-Locked Loop Engine<br/>(Sub-Millisecond Micro-NTP Clock Sync)"]:::p2p
-        HardwareCal["Hardware Calibration Stage<br/>(DAC Latency & Acoustic Lead/Lag)"]:::dsp
+    subgraph ClientChamber ["Client Browser (React 19 & Web Audio API)"]
+        UI["React 19 Interface<br/>(Discovery • Equalizer • Group Jam)"]:::client
+        DSPStage["32-Bit Floating DSP Chain<br/>(5-Band EQ • Mid-Side Spatializer • Limiter)"]:::dsp
+        LocalVault["Local Sync Hub<br/>(In-Memory Blob Sandbox • Zero Uploads)"]:::client
+        PLLSync["WebRTC Sync Engine<br/>(Micro-NTP Clock Sync & Dynamic PLL)"]:::p2p
+        HardwareCal["Hardware Calibration Slider<br/>(DAC Latency & Lead/Lag Compensation)"]:::dsp
     end
 
     subgraph MeshNetwork ["WebRTC Peer-to-Peer Mesh"]
-        SCTP["Direct SCTP Data Channels<br/>(Instant Seek & Playhead Lock)"]:::p2p
-        RemotePeer["Remote Peer Devices<br/>(Synchronized Playback Nodes)"]:::p2p
+        SCTP["Encrypted SCTP Data Channels<br/>(Direct P2P Audio & Telemetry)"]:::p2p
+        RemotePeer["Connected Peer Devices<br/>(Synchronized Listeners)"]:::p2p
     end
 
-    subgraph EdgeLayer ["Global Edge Infrastructure (Vercel)"]
-        VercelCDN["Edge Delivery Gateway<br/>(RFC 9110 Byte-Range Slicing)"]:::edge
-        SecurityGate["JWT Auth & Role Governance<br/>(System Architect Gate)"]:::edge
+    subgraph EdgeLayer ["Edge Ingress & Application Core"]
+        VercelCDN["Vercel Edge / Nginx Reverse Proxy<br/>(RFC 9110 Byte-Range Passthrough)"]:::edge
+        ExpressAPI["Express 5 REST & Audio API<br/>(JWT Auth • GridFS Streamer • LRU Cache)"]:::edge
+        SocketGateway["Socket.io Signaling Gateway<br/>(Primary Low-Latency WebSocket Path)"]:::edge
     end
 
-    subgraph CloudVault ["Cloud Core (MongoDB Atlas)"]
-        GridFSStore["GridFS Lossless Audio Chunks<br/>(512KB Chunks • Stream Vault)"]:::storage
-        UserStore["User Profiles & Preferences<br/>(EQ Curves & Saved Settings)"]:::storage
-        TTLSignals["Ephemeral Signal Collections<br/>(TTL: 120s Auto-Eviction)"]:::storage
+    subgraph CloudVault ["Cloud Persistence (MongoDB Atlas)"]
+        GridFSAudio["GridFS audio_library<br/>(512KB Audio Binary Chunks)"]:::storage
+        GridFSImages["GridFS image_library<br/>(256KB Artwork Binary Chunks)"]:::storage
+        UserStore["User Profiles & Preferences<br/>(Saved EQ Curves & Account Roles)"]:::storage
+        TTLSignals["Ephemeral Jam Collections<br/>(Signals: 120s TTL • Rooms: 3600s TTL)"]:::storage
     end
 
     UI --> DSPStage
@@ -102,59 +142,179 @@ flowchart TD
     DSPStage <--> PLLSync
     PLLSync <-->|Encrypted Direct P2P| SCTP
     SCTP <--> RemotePeer
+    LocalVault -.->|64KB Binary Slices| SCTP
     DSPStage -->|HTTP 206 Byte Ranges| VercelCDN
-    VercelCDN <--> SecurityGate
-    SecurityGate <--> UserStore
-    VercelCDN <--> GridFSStore
-    SecurityGate <--> TTLSignals
+    VercelCDN --> ExpressAPI
+    ExpressAPI <--> GridFSAudio
+    ExpressAPI <--> GridFSImages
+    ExpressAPI <--> UserStore
+    ExpressAPI <--> TTLSignals
+    PLLSync <-->|Signaling Handshake| SocketGateway
 ```
 
 </details>
 
 ---
 
-### ✦ Launching Riveria
+## Technology Stack
 
-Experience the sanctuary locally or deploy the complete stack:
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Frontend SPA** | React | 19.x | Reactive UI, hooks, Concurrent Mode for non-blocking audio scheduling |
+| **Bundler / Build**| Vite (Rollup) | 8.x | ES module bundling, instant Hot Module Replacement (HMR) |
+| **Styling** | Tailwind CSS & Framer Motion | 4.x / 14.x | Dark obsidian theme, fluid animations, responsive layouts |
+| **Audio Processing**| Web Audio API | Standard | 32-bit floating-point mastering chain, 5-band EQ, Mid-Side spatializer |
+| **P2P Transport** | WebRTC DataChannels | Standard | Direct peer-to-peer binary mesh and micro-NTP synchronization |
+| **Realtime Gateway**| Socket.io | 4.8.x | Low-latency WebRTC signaling and mesh room management |
+| **Backend Runtime** | Node.js (Alpine Linux) | 22.x LTS | High-throughput asynchronous event loop and stream piping |
+| **Web Framework** | Express.js | 5.2.x | REST API routing, RFC 9110 range streaming, security middleware |
+| **Database** | MongoDB Atlas & GridFS | 9.x | Document storage and dual-bucket chunked audio/image persistence |
+| **Object Modeling** | Mongoose | 9.x | Strict schema validation, lifecycle hooks, and TTL indexes |
+| **Validation** | Zod | 4.x | Compile-time and runtime input schema validation |
+| **Security** | Helmet & Bcrypt.js | 8.x / 3.x | HTTP security headers, CORS protection, salted password hashing |
+| **Reverse Proxy** | Nginx | 1.27 Alpine | Unbuffered byte-range streaming proxy and WebSocket routing |
+| **Containers** | Docker & Docker Compose | v2 | Multi-stage lightweight Alpine container deployment |
 
-#### 1. Local Development
+---
+
+## Project Structure
+
+```text
+Riveria/
+├── client/                     # Frontend React 19 single-page application
+│   ├── public/                 # Static assets, favicon, audio files, preview images
+│   ├── src/
+│   │   ├── components/         # Modular UI components (Navbar, Player, Visualizer)
+│   │   ├── context/            # Global contexts (AuthContext, PlayerContext, JamContext)
+│   │   ├── hooks/              # Custom hooks for audio playback and WebRTC
+│   │   ├── pages/              # Primary views (Dashboard, Settings, JamSession, Admin)
+│   │   └── services/           # API request layer and catalog uploader
+│   └── package.json
+├── server/                     # Backend Node.js Express 5 API
+│   ├── controllers/            # Route controllers (Auth, Track, Jam, Admin)
+│   ├── middleware/             # Security, JWT auth, and role verification
+│   ├── models/                 # Mongoose schemas (User, Track, JamRoom, JamSignal)
+│   ├── routes/                 # Express REST endpoint declarations
+│   ├── services/               # GridFS storage engine, LRU cache, audio validator
+│   └── server.js               # Application bootstrap and Socket.io gateway
+├── docs/
+│   └── images/                 # High-resolution documentation preview screenshots
+├── docker-compose.yml          # Production multi-container composition
+├── vercel.json                 # Edge serverless configuration and rewrites
+└── README.md                   # System documentation
+```
+
+---
+
+## Quickstart & Local Setup
+
+### Prerequisites
+* **Node.js:** `v20.x` or `v22.x LTS` installed
+* **npm:** `v10.x` or higher
+* **MongoDB:** A local MongoDB instance or a free MongoDB Atlas connection string
+
+### 1. Clone the Repository
 ```bash
-# Clone the repository
 git clone https://github.com/Parth-Chavan-15/Riveria.git
 cd Riveria
-
-# Install dependencies
-npm ci --prefix server && npm ci --prefix client
-
-# Launch both signaling server and frontend studio
-npm run dev --prefix server   # Port 5000: Express 5 Signaling Core
-npm run dev --prefix client   # Port 5173: Vite Audiophile Client
 ```
 
-#### 2. Isolated Production Container
+### 2. Install Dependencies
 ```bash
-# Build and run the complete containerized stack with one command
+npm ci --prefix server
+npm ci --prefix client
+```
+
+### 3. Configure Environment Variables
+Create a `.env` file in the `server` directory (refer to `.env.example`):
+```env
+PORT=5000
+NODE_ENV=development
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/riveria?retryWrites=true&w=majority
+JWT_SECRET=your_32_character_cryptographic_jwt_secret_key
+CLIENT_ORIGIN=http://localhost:5173
+```
+
+### 4. Launch Development Servers
+Run both backend and frontend concurrently:
+```bash
+# Terminal 1: Backend Server (Port 5000)
+npm run dev --prefix server
+
+# Terminal 2: Frontend Studio (Port 5173)
+npm run dev --prefix client
+```
+Open **`http://localhost:5173`** in your browser. The Vite development proxy forwards all `/api` and Socket.io calls directly to port 5000.
+
+---
+
+## Containerized Deployment (Docker Compose)
+
+To launch the complete application stack in isolated production containers with Nginx reverse proxying:
+
+```bash
+# Build and launch all services in detached mode
 docker compose up -d --build
 ```
-Open `http://localhost:8088` in your browser.
 
-#### 3. Automated Verification Suites
+* **Frontend & Reverse Proxy:** Accessible at **`http://localhost:8088`**
+* **Audio Persistence:** Uploaded tracks persist across restarts via the named Docker volume `audio_uploads`.
+* **Healthchecks:** Built-in probes automatically monitor service health and handle automatic restart if needed.
+
+---
+
+## Testing & Verification Suites
+
+Riveria includes automated test and quality suites covering backend logic, file security, and frontend compilation:
+
 ```bash
-# Run full automated DSP, settings persistence, and admin security tests
+# Run backend unit tests (native Node.js test runner)
+npm test --prefix server
+
+# Run frontend quality checks (oxlint)
+npm run lint --prefix client
+
+# Verify frontend production build (Vite & Rolldown)
+npm run build --prefix client
+
+# Run automated settings persistence and admin security test
 node test_settings_and_admin.cjs
 
-# Verify master audio chunked upload and GridFS cloud ingest flow
+# Run automated master audio upload and GridFS ingest test
 node test_catalog_upload_flow.cjs
 ```
 
 ---
 
-### ✦ Epilogue
+## API Reference Summary
 
-> *"We do not listen to music to escape the world; we listen to remember the world we have forgotten."*
+| Method | Endpoint | Access | Purpose |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Public | Register a new listener account |
+| `POST` | `/api/auth/login` | Public | Authenticate credentials and receive JWT |
+| `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user profile and saved audio preferences |
+| `PUT` | `/api/auth/preferences` | Authenticated | Persist custom 5-band EQ curve and audio buffer settings |
+| `GET` | `/api/tracks` | Public | Fetch all available cloud library tracks |
+| `GET` | `/api/tracks/:id` | Public | Fetch single track metadata |
+| `GET` | `/api/tracks/:id/stream`| Public | Stream audio using RFC 9110 byte-range slicing |
+| `POST` | `/api/tracks/upload` | Admin Only | Upload audio binary to GridFS with magic-byte validation |
+| `POST` | `/api/tracks` | Admin Only | Register track metadata and cover image in the database |
+| `PUT` | `/api/tracks/:id` | Admin Only | Update existing track details |
+| `DELETE`| `/api/tracks/:id` | Admin Only | Remove track and delete associated GridFS binary chunks |
+| `POST` | `/api/jam/room` | Authenticated | Create a new WebRTC listening room |
+| `GET` | `/api/jam/room/:code` | Authenticated | Fetch room status and active peer roster |
+| `POST` | `/api/jam/signal` | Authenticated | Dispatch WebRTC signaling offer, answer, or ICE candidate |
+| `GET` | `/api/jam/signals/:code`| Authenticated | Poll pending signals (fallback when WebSockets are blocked) |
+| `GET` | `/api/admin/users` | Admin Only | List all registered user accounts |
+| `PUT` | `/api/admin/users/:id/role`| Admin Only | Promote or demote user account role (`listener` / `admin`) |
+| `GET` | `/api/admin/telemetry` | Admin Only | Inspect server memory heap and active WebRTC mesh count |
 
-Riveria is open-source, crafted with reverence for pure sound, digital sovereignty, and the timeless art of listening together.
+---
+
+## License
+
+Riveria is open-source software licensed under the **MIT License**.
 
 <div align="center">
-<sub>© 2026 Riveria Music Engine. Built with love by the Riveria team.</sub>
+<sub>© 2026 Riveria Music Engine. Built with passion for high-fidelity sound, digital privacy, and shared listening.</sub>
 </div>

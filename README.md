@@ -1,13 +1,13 @@
 <div align="center">
 
-# R I V E R I A
+# ✦ R I V E R I A ✦
 ### *Where sound dissolves into memory.*
 
 **A sovereign acoustic sanctuary, 32-bit floating-point DSP engine, and real-time listening mesh.**
 
 <br />
 
-[![Live Production](https://img.shields.io/badge/Production-riveria--umber.vercel.app-d0bcff?style=for-the-badge&logo=vercel&logoColor=black)](https://riveria-umber.vercel.app)
+[![Live Production](https://img.shields.io/badge/Live_Production-riveria--umber.vercel.app-7C3AED?style=for-the-badge&logo=vercel&logoColor=white)](https://riveria-umber.vercel.app)
 [![React 19](https://img.shields.io/badge/React-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![Node.js 22](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Web Audio API](https://img.shields.io/badge/Web_Audio_API-32--Bit_Float_DSP-8B5CF6?style=for-the-badge&logo=soundcharts&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
@@ -15,11 +15,23 @@
 [![RFC 9110](https://img.shields.io/badge/RFC_9110-Partial_Content-9333EA?style=for-the-badge)](https://httpwg.org/specs/rfc9110.html)
 [![MongoDB Atlas](https://img.shields.io/badge/MongoDB-Atlas_GridFS-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com)
 
-<br />
+<br /><br />
+
+[ ✦ Overview ](#-the-prologue-music-reclaimed) &nbsp;•&nbsp; 
+[ ✦ The Seven Pillars ](#-the-seven-pillars-of-riveria) &nbsp;•&nbsp; 
+[ ✦ Acoustic Superiority ](#-acoustic-superiority-matrix) &nbsp;•&nbsp; 
+[ ✦ Architecture ](#-system-architecture) &nbsp;•&nbsp; 
+[ ✦ Quickstart ](#-launching-the-sanctuary)
+
+<br /><br />
 
 <a href="https://riveria-umber.vercel.app">
-  <img src="docs/images/riveria-preview.png" alt="Riveria High-Fidelity Audio Experience" width="100%" style="max-width: 960px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 80px rgba(0,0,0,0.85);" />
+  <img src="docs/images/riveria-preview.png" alt="Riveria High-Fidelity Audio Experience" width="100%" style="max-width: 960px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 30px 90px rgba(0,0,0,0.9);" />
 </a>
+
+<p align="center">
+  <sub>Click the preview above to step into the live Riveria listening chamber.</sub>
+</p>
 
 </div>
 
@@ -27,43 +39,104 @@
 
 ### ✦ The Prologue: Music, Reclaimed
 
-Most modern music apps treat sound like an algorithmic commodity—buried underneath endless recommendation feeds, behavioral trackers, visual clutter, and dynamically squashed audio.
+> *"Most modern music apps treat sound like an algorithmic commodity—buried underneath endless recommendation feeds, behavioral trackers, visual clutter, and dynamically squashed audio."*
 
-**Riveria** was built to restore what was lost: the feeling of sitting in a quiet room, putting on a record, and losing yourself in pure sound. It is a sovereign listening haven that unites studio-grade acoustic processing with the warmth of shared listening—free from advertisements, tracking, or commercial algorithms.
+**Riveria** was built to restore what was lost: the feeling of sitting in a quiet room, putting on a record, and losing yourself in pure sound. It is an audiophile listening haven uniting studio-grade acoustic signal processing with the intimacy of synchronized group listening—engineered with absolute respect for digital sovereignty, zero advertisements, and zero tracking.
 
 ---
 
-### ✦ What You Can Experience in Riveria
+### ✦ The Seven Pillars of Riveria
 
-Whether you are seeking solace in late-night listening or syncing a song with a friend across the world, Riveria is designed to feel effortless, intimate, and alive:
+<br />
 
-#### 1. Holographic 32-Bit Floating DSP Stage
-Hear your music the way master recording engineers intended. Riveria runs a high-resolution 32-bit floating-point audio engine with a **Holographic 3D Spatializer**. Using psychoacoustic Mid-Side separation and an 18 ms Haas delay matrix, it expands the acoustic soundstage beyond flat stereo into a wide, immersive chamber—delivering clarity and warmth without phase distortion or mono cancellation.
+<table>
+<tr>
+<td width="50%" valign="top">
 
-#### 2. Tactile 5-Band Equalizer & Dynamic Curve
-Shape your sound with tactile, responsive vertical faders that react to your touch. Watch the dynamic frequency response curve sculpt itself in real time as you adjust Sub-Bass (60 Hz), Punch (250 Hz), Vocal Mids (1 kHz), Presence (4 kHz), and Air (16 kHz). Switch between curated studio profiles (*Studio Reference*, *Bass Presence*, *Vocal Radiance*, *Electronic & Club*, *Acoustic Warmth*) or carve your own signature tone. Every preference is automatically saved to your cloud account so your acoustic profile stays with you across all your devices.
+### 🔮 1. Holographic 32-Bit DSP Stage
+* **Studio Mastering Chain:** Direct in-browser 32-bit floating-point Web Audio API pipeline ensuring zero internal digital clipping and vast dynamic headroom.
+* **Mid-Side Psychoacoustic Separation:** Splits stereo into Mid ($M = L + R$) and Side ($S = L - R$) channels.
+* **18ms Haas Matrix:** Inverted cross-delay widens the soundstage beyond physical speaker boundaries without comb filtering or mono cancellation.
 
-#### 3. WebRTC Group Jam — Telepathic Synchronized Listening
-Music was never meant to be experienced alone. Riveria lets you spin up a private WebRTC Listening Jam and invite friends with a single 6-character room code. Over direct encrypted peer-to-peer data channels, playback stays in telepathic sync: when you pause, scrub to a bridge, or change a track, every connected device moves at the exact same millisecond—with no server in the middle delaying the sound. Powered by bidirectional 4-timestamp micro-NTP time synchronization and a continuous Phase-Locked Loop (PLL) slew engine, playback divergence holds within sub-millisecond phase accuracy (< 4 ms).
+</td>
+<td width="50%" valign="top">
 
-#### 4. Acoustic Phase Alignment & Hardware Calibration
-Eliminate comb-filtering and phase cancellation when playing across multiple physical speakers in the same room. Riveria includes a dedicated hardware calibration engine that compensates for physical speaker distance and operating-system DAC buffer latencies with customizable millisecond lead and lag offsets ($\Delta_{hw}$ from -60 ms to +60 ms), complete with one-click presets for *Studio Reference (0 ms)*, *Android AudioTrack (-25 ms)*, and *Cellular (-40 ms)*.
+### 🎛️ 2. Tactile 5-Band Equalizer & Curve
+* **Interactive Faders:** Precision tactile response across **60 Hz** (Sub-Bass), **250 Hz** (Punch), **1 kHz** (Vocal Mids), **4 kHz** (Presence), and **16 kHz** (Air).
+* **Live Frequency Curve:** Real-time dynamic SVG response curve visualizes equalization modifications continuously.
+* **Curated Studio Presets:** *Studio Reference*, *Bass Presence*, *Vocal Radiance*, *Electronic & Club*, and *Acoustic Warmth* with cloud profile persistence.
 
-#### 5. Sovereign Local Vault (Zero Server Uploads)
-Your private collection of lossless FLACs, WAVs, or rare MP3s stays truly private. Mount local audio files directly from your computer or phone into Riveria's memory sandbox via Blob URLs. Audio bytes reside entirely inside browser memory and never leave your device. You can enjoy your rarest tracks inside Riveria's audiophile pipeline with absolute privacy, or stream them peer-to-peer to friends in a WebRTC Jam in 64 KB encrypted binary chunks without a single byte ever touching cloud storage.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
-#### 6. Seamless Edge Streaming & Studio Ingest
-Cloud tracks stream with instant, zero-buffering scrubbing via RFC 9110 byte-range slicing, backed by an in-memory chunk cache delivering sub-5 ms initial playback response. When new studio masters are introduced, Riveria’s chunked ingest processes high-resolution audio into MongoDB GridFS while automatically extracting embedded ID3 cover art and track metadata with binary magic-byte security checks.
+### 📡 3. WebRTC Group Jam (Sub-4ms Sync)
+* **Direct Encrypted P2P Mesh:** Connect friends instantly with 6-character room codes over SCTP DataChannels (`jam_sync`), bypassing media relays.
+* **Bidirectional 4-Timestamp Micro-NTP:** Continuously calculates RTT and clock offset ($\theta$), discarding top 50% jitter outliers.
+* **Three-Zone Dynamic PLL:** Micro-slews playback rate ($0.985\times - 1.015\times$) for imperceptible phase lock, with `onPlaying` buffer catch-up.
 
-#### 7. System Architect Command Suite
-For administrators, Riveria provides an executive control room: real-time telemetry gauges showing active WebRTC meshes, memory heap diagnostics, live catalog curation, and user role governance. Multi-account tab isolation allows administrators and listeners to operate simultaneously in separate tabs of the same browser window with zero session bleeding.
+</td>
+<td width="50%" valign="top">
+
+### 📐 4. Acoustic Phase & Hardware Calibration
+* **Comb-Filtering Annihilation:** Prevents acoustic phase cancellation when multiple physical speakers play in the same room.
+* **Adjustable Lead/Lag Offset:** Fine-tune acoustic alignment ($\Delta_{hw}$ from -60 ms to +60 ms).
+* **Hardware Output Presets:** Built-in profiles for *Studio Reference (0 ms)*, *Android AudioTrack (-25 ms)*, and *Cellular (-40 ms)* to neutralize OS DAC delays.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🛡️ 5. Sovereign Local Vault (Zero Server Upload)
+* **RAM-Only Sandboxing:** Mount lossless FLAC, WAV, and MP3 files straight from your device into browser memory via Blob URLs.
+* **True Digital Privacy:** Raw audio bytes never touch an external server or disk—enjoy rare demo stems with 100% privacy.
+* **P2P Binary Chunk Sharing:** Streams local tracks directly to friends in WebRTC Jam rooms via 64 KB SCTP chunks with zero cloud bandwidth.
+
+</td>
+<td width="50%" valign="top">
+
+### ⚡ 6. Seamless RFC 9110 Edge Streaming
+* **HTTP 206 Partial Content:** Ultra-fast byte-range slicing allows instant scrubbing across multi-megabyte lossless files.
+* **Sub-5ms Hot Caching:** In-memory LRU chunk cache eliminates initial buffering delays before streaming from MongoDB GridFS (`audio_library`).
+* **Binary Magic-Byte Inspection:** Automatic verification of `ID3`, `fLaC`, and `RIFF` headers with automatic ID3 artwork metadata extraction.
+
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+
+### 👑 7. System Architect Command Suite
+* **Executive Role Governance:** Strict Role-Based Access Control (`admin` vs `listener`) with cryptographically signed stateless JWT authentication.
+* **Master Catalog Management:** Upload, curate, and maintain cloud audio masters with automatic embedded artwork and tag parsing.
+* **Engine Console Telemetry:** Real-time operational gauges displaying active WebRTC mesh topologies, memory heap diagnostics, and streaming load.
+* **Multi-Account Tab Isolation:** Independent `sessionStorage` token isolation and unique tab nonces (`tabId`) allow concurrent admin and listener sessions on one workstation without collision.
+
+</td>
+</tr>
+</table>
+
+---
+
+### ✦ Acoustic Superiority Matrix
+
+| Capability | Conventional Streaming (Spotify / Apple / YT Music) | Riveria Music Engine |
+| :--- | :--- | :--- |
+| **Multi-Speaker Synchronization** | High latency ($> 200\text{ ms}$ delay, audible echo & comb-filtering) | **Sub-millisecond phase-lock ($< 4\text{ ms}$ via Micro-NTP & PLL)** |
+| **Local Audio Library** | Mandatory cloud upload to third-party databases | **100% In-Browser RAM Sandbox (Zero server upload)** |
+| **Digital Signal Processing** | Fixed, lossy compressed streams (Ogg 320k / AAC 256k) | **32-Bit Float Web Audio API Mastering + 5-Band Parametric EQ** |
+| **Spatial Soundstage** | Proprietary encoded multi-channel surround | **Real-time Mid-Side Haas 3D holographic matrix** |
+| **Audio Transport Architecture** | Centralized client-server relays only | **Hybrid Cloud Vault + Direct Encrypted SCTP P2P Mesh** |
+| **Hardware Output Calibration** | None (uncompensated mobile OS DAC buffer lag) | **Adjustable Hardware Lead/Lag Slider (Studio, Android, Cellular)** |
+| **Session Isolation** | Single-account per browser window | **Multi-tenant tab isolation with cryptographic peer nonces** |
 
 ---
 
 ### ✦ System Architecture
 
 <details>
-<summary><b>✦ Click here to view the System Architecture Diagram</b></summary>
+<summary><b>✦ Click here to expand the System Architecture Diagram</b></summary>
 <br />
 
 ```mermaid
@@ -115,34 +188,42 @@ flowchart TD
 
 ---
 
-### ✦ Launching Riveria
+### ✦ Launching the Sanctuary
 
-Experience the sanctuary locally or deploy the complete stack:
+Experience Riveria locally or deploy the containerized production stack:
 
 #### 1. Local Development
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/Parth-Chavan-15/Riveria.git
 cd Riveria
 
-# Install dependencies
+# 2. Install dependencies across both workspaces
 npm ci --prefix server && npm ci --prefix client
 
-# Launch both signaling server and frontend studio
-npm run dev --prefix server   # Port 5000: Express 5 Signaling Core
-npm run dev --prefix client   # Port 5173: Vite Audiophile Client
+# 3. Launch both signaling core and frontend studio
+npm run dev --prefix server   # Express 5 Signaling Core & Audio API (Port 5000)
+npm run dev --prefix client   # Vite 8 Audiophile Client Studio (Port 5173)
 ```
+> [!TIP]
+> Navigate to **`http://localhost:5173`** in your browser. The Vite development proxy automatically routes all `/api` endpoints and WebSocket signaling directly to the Express backend.
 
 #### 2. Isolated Production Container
 ```bash
-# Build and run the complete containerized stack with one command
+# Build and run the complete containerized cluster in detached mode
 docker compose up -d --build
 ```
-Open `http://localhost:8088` in your browser.
+Access the production application directly at **`http://localhost:8088`**.
 
 #### 3. Automated Verification Suites
 ```bash
-# Run full automated DSP, settings persistence, and admin security tests
+# Execute unit test suites (Node.js native test runner)
+npm test --prefix server
+
+# Verify frontend code quality and linting (oxlint)
+npm run lint --prefix client
+
+# Verify full automated DSP, settings persistence, and admin security
 node test_settings_and_admin.cjs
 
 # Verify master audio chunked upload and GridFS cloud ingest flow
